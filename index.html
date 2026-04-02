@@ -12,13 +12,11 @@
         .dashboard-container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         h2 { color: #333; margin-top: 0; margin-bottom: 20px; }
         
-        /* 分頁按鈕樣式 */
         .tabs { display: flex; justify-content: center; margin-bottom: 20px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
         .tab-btn { padding: 12px 20px; margin: 0 3px; font-size: 15px; cursor: pointer; background: #eef2f5; border: none; border-radius: 8px 8px 0 0; color: #555; transition: 0.3s; }
         .tab-btn:hover { background: #dce4e8; }
         .tab-btn.active { background: #0066cc; color: white; font-weight: bold; }
 
-        /* 篩選器樣式 */
         .filter-section { background: #eef2f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; text-align: left; }
         .filter-section strong { margin-right: 15px; color: #444; }
         .checkbox-label { margin-right: 15px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; }
@@ -71,7 +69,6 @@
                     let category = null;
                     let v1_y = null; 
                     
-                    // 尋找分類標籤與預設的Y值 (月均收益)
                     for(let col of allCategories) {
                         if(row[col] && row[col].trim() !== '') {
                             category = col;
@@ -80,23 +77,20 @@
                         }
                     }
 
-                    // 第一頁：X (1,2月均時), Y (月均收益)
                     let v1_x = parseFloat(row['1,2月均時']);
 
-                    // 第二頁：X (時/天), Y (收益/時)
                     let rawX2 = row['時/天'] ? String(row['時/天']).replace(/,/g, '') : 'NaN';
                     let rawY2 = row['收益/時'] ? String(row['收益/時']).replace(/,/g, '') : 'NaN';
                     let v2_x = parseFloat(rawX2);
                     let v2_y = parseFloat(rawY2);
 
-                    // 第三頁：X (開播天數), Y (時/天), 半徑 R (月均收益)
                     let revStr = row['月均收益(校正)'] ? String(row['月均收益(校正)']).replace(/,/g, '') : String(v1_y);
-                    let rev = parseFloat(revStr); // H列
-                    let v3_y = v2_x; // L列 (時/天)
-                    let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; // J列 ÷ L列 = 每月平均天數
+                    let rev = parseFloat(revStr); 
+                    let v3_y = v2_x; 
+                    let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; 
                     
-                    // 根據收益設定泡泡半徑
-                    let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 50);
+                    // 🎯 縮小泡泡的比例，避免重疊過度 (除數從 50 改為 80)
+                    let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 80);
 
                     if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
                         allParsedData.push({
@@ -146,12 +140,13 @@
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
 
+            // 🎯 調整顏色透明度從 0.7 降至 0.5，並增加實心外框，提升泡泡重疊時的辨識度
             const datasetsConfig = [
-                { label: '高收高時', backgroundColor: 'rgba(0, 255, 255, 0.7)', borderColor: '#00ced1', data: [] },
-                { label: '高收低時', backgroundColor: 'rgba(0, 128, 0, 0.7)', borderColor: '#006400', data: [] },
-                { label: '低收高時', backgroundColor: 'rgba(255, 165, 0, 0.7)', borderColor: '#ff8c00', data: [] },
-                { label: '低收低時', backgroundColor: 'rgba(255, 0, 0, 0.7)', borderColor: '#8b0000', data: [] },
-                { label: '導師', backgroundColor: 'rgba(0, 0, 255, 0.7)', borderColor: '#00008b', data: [] }
+                { label: '高收高時', backgroundColor: 'rgba(0, 255, 255, 0.5)', borderColor: 'rgba(0, 206, 209, 0.9)', borderWidth: 1, data: [] },
+                { label: '高收低時', backgroundColor: 'rgba(0, 128, 0, 0.5)', borderColor: 'rgba(0, 100, 0, 0.9)', borderWidth: 1, data: [] },
+                { label: '低收高時', backgroundColor: 'rgba(255, 165, 0, 0.5)', borderColor: 'rgba(255, 140, 0, 0.9)', borderWidth: 1, data: [] },
+                { label: '低收低時', backgroundColor: 'rgba(255, 0, 0, 0.5)', borderColor: 'rgba(139, 0, 0, 0.9)', borderWidth: 1, data: [] },
+                { label: '導師', backgroundColor: 'rgba(0, 0, 255, 0.5)', borderColor: 'rgba(0, 0, 139, 0.9)', borderWidth: 1, data: [] }
             ];
 
             const categoryIndexMap = { '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4 };
@@ -163,9 +158,14 @@
                         if (currentTab === 1) {
                             datasetsConfig[idx].data.push({ x: item.v1_x, y: item.v1_y, id: item.id, name: item.name });
                         } else if (currentTab === 2) {
-                            if (!isNaN(item.v2_x) && !isNaN(item.v2_y)) datasetsConfig[idx].data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
+                            if (!isNaN(item.v2_x) && !isNaN(item.v2_y)) {
+                                datasetsConfig[idx].data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
+                            }
                         } else if (currentTab === 3) {
-                            if (!isNaN(item.v3_x) && !isNaN(item.v3_y)) datasetsConfig[idx].data.push({ x: item.v3_x, y: item.v3_y, r: item.v3_r, rev: item.rev, id: item.id, name: item.name });
+                            // 確保對數刻度不能有 <= 0 的數值
+                            if (item.v3_x > 0 && item.v3_y > 0) {
+                                datasetsConfig[idx].data.push({ x: item.v3_x, y: item.v3_y, r: item.v3_r, rev: item.rev, id: item.id, name: item.name });
+                            }
                         }
                     }
                 }
@@ -179,9 +179,12 @@
             let xTitle = currentTab === 1 ? '1,2月均時 (小時)' : currentTab === 2 ? '時 / 天 (每天平均開播時長)' : '每月開播天數 (天/月)';
             let yTitle = currentTab === 1 ? '月均收益 (鑽)' : currentTab === 2 ? '收益 / 時 (每小時產能)' : '時 / 天 (每次開播時長)';
             
-            let yScaleType = (currentTab === 1 || currentTab === 2) ? 'logarithmic' : 'linear';
-
-            // 🎯 新增：如果是第三頁，把 Y 軸最大值限制在 12 (小時)
+            // 🎯 刻度邏輯設定：
+            // 第一頁：Y為對數
+            // 第二頁：Y為對數
+            // 第三頁：X與Y雙對數 (拉開群聚)，Y上限12
+            let xScaleType = currentTab === 3 ? 'logarithmic' : 'linear';
+            let yScaleType = 'logarithmic'; 
             let yMaxSetting = currentTab === 3 ? 12 : undefined;
 
             let currentAnnotations = {};
@@ -215,11 +218,12 @@
                     },
                     scales: {
                         x: { 
+                            type: xScaleType,
                             title: { display: true, text: xTitle, font: { size: 14, weight: 'bold' } } 
                         },
                         y: { 
                             type: yScaleType, 
-                            max: yMaxSetting,  /* 👈 這是加進去的設定，用來把最大值鎖定 */
+                            max: yMaxSetting,  
                             title: { display: true, text: yTitle, font: { size: 14, weight: 'bold' } } 
                         }
                     }
