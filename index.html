@@ -3,89 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>主播收益與時數散佈圖 (本地端讀取版)</title>
+    <title>公司內部 - 主播收益與時數看板</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
-        body { font-family: "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f9f9f9; }
-        .controls { margin: 20px auto; padding: 15px; background: white; width: 90%; max-width: 600px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .chart-wrapper { width: 90%; max-width: 1200px; height: 75vh; margin: 10px auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        input[type="file"] { font-size: 16px; padding: 10px; cursor: pointer; }
+        body { font-family: "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f7f6; margin: 0; padding: 20px; }
+        .dashboard-container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        h2 { color: #333; margin-top: 0; }
+        
+        /* 篩選器樣式 */
+        .filter-section { background: #eef2f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; text-align: left; }
+        .filter-section strong { margin-right: 15px; color: #444; }
+        .checkbox-label { margin-right: 15px; cursor: pointer; font-size: 15px; display: inline-flex; align-items: center; }
+        .checkbox-label input { margin-right: 5px; width: 16px; height: 16px; cursor: pointer; }
+        
+        #loading { font-size: 18px; color: #0066cc; font-weight: bold; padding: 40px; }
+        .chart-wrapper { width: 100%; height: 70vh; position: relative; }
     </style>
 </head>
 <body>
-    <h2>主播收益與時數散佈圖</h2>
-    
-    <div class="controls">
-        <label for="csvFileInput"><b>請選擇本地 CSV 檔案：</b></label>
-        <br><br>
-        <input type="file" id="csvFileInput" accept=".csv" />
-        <p style="font-size: 13px; color: #666; margin-top: 10px;">(資料僅在您的瀏覽器內運算，不會上傳至任何伺服器，安全無虞)</p>
-    </div>
 
-    <div class="chart-wrapper">
-        <canvas id="myChart"></canvas>
+    <div class="dashboard-container">
+        <h2>主播收益與時數看板</h2>
+        
+        <div id="loading">讀取資料中，請稍候...<br><span style="font-size:14px; color:#666; font-weight:normal;">(若持續卡在這裡，請確認是否已上傳至 GitHub，或 data.csv 檔名是否正確)</span></div>
+
+        <div class="filter-section" id="filterSection">
+            <strong>篩選顯示標籤：</strong>
+            <span id="checkboxContainer"></span>
+        </div>
+
+        <div class="chart-wrapper">
+            <canvas id="myChart"></canvas>
+        </div>
     </div>
 
     <script>
-        let myChartInstance = null; // 用來儲存圖表實例，以便重新上傳時可以清除舊圖
+        // ⚠️ 這裡設定你要自動讀取的 CSV 檔案名稱
+        const csvFileName = "data.csv"; 
+        
+        let myChartInstance = null; // 儲存圖表實例
+        let allParsedData = [];     // 儲存從 CSV 讀取到的所有原始資料
+        const allCategories = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
 
-        // 監聽檔案上傳按鈕的變化
-        document.getElementById('csvFileInput').addEventListener('change', function(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-
-            // 使用 PapaParse 讀取本地檔案
-            Papa.parse(file, {
-                header: true,
-                complete: function(results) {
-                    const rawData = [];
-                    // 定義 5 個分類欄位
-                    const categoryColumns = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
-
-                    // 處理資料
-                    results.data.forEach(row => {
-                        let category = null;
-                        let y_val = null;
-                        
-                        // 尋找在哪一個分類欄位有數值
-                        for(let col of categoryColumns) {
-                            if(row[col] && row[col].trim() !== '') {
-                                category = col;
-                                // 移除數字中的逗號並轉成浮點數
-                                y_val = parseFloat(row[col].replace(/,/g, ''));
-                                break;
-                            }
+        // 頁面載入時，自動去抓取旁邊的 CSV 檔案
+        Papa.parse(csvFileName, {
+            download: true,
+            header: true,
+            complete: function(results) {
+                // 隱藏載入中文字，顯示篩選器
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('filterSection').style.display = 'block';
+                
+                // 處理並清洗資料
+                results.data.forEach(row => {
+                    let category = null;
+                    let y_val = null;
+                    
+                    for(let col of allCategories) {
+                        if(row[col] && row[col].trim() !== '') {
+                            category = col;
+                            y_val = parseFloat(row[col].replace(/,/g, ''));
+                            break;
                         }
+                    }
 
-                        // 讀取 X 軸的均時數值
-                        let x_val = parseFloat(row['1,2月均時']);
+                    let x_val = parseFloat(row['1,2月均時']);
 
-                        // 確保資料有效才加入圖表
-                        if(category && !isNaN(x_val) && !isNaN(y_val)) {
-                            rawData.push({
-                                id: row['主播ID'],
-                                name: row['主播暱稱'],
-                                x: x_val,
-                                y: y_val,
-                                category: category
-                            });
-                        }
-                    });
+                    if(category && !isNaN(x_val) && !isNaN(y_val)) {
+                        allParsedData.push({
+                            id: row['主播ID'],
+                            name: row['主播暱稱'],
+                            x: x_val,
+                            y: y_val,
+                            category: category
+                        });
+                    }
+                });
 
-                    // 畫圖
-                    buildChart(rawData);
-                },
-                error: function(err) {
-                    alert("檔案解析失敗，請確認是否為正確的 CSV 格式。");
-                    console.error(err);
-                }
-            });
+                // 動態產生勾選框並畫圖
+                createCheckboxes();
+                updateChart();
+            },
+            error: function(err) {
+                document.getElementById('loading').innerHTML = "❌ 無法讀取資料檔案。<br><br>請確認：<br>1. 檔案名稱是否為 <b>data.csv</b><br>2. 檔案是否與 index.html 放在同一個資料夾<br>3. 您是否正在本機直接點開？(請透過 GitHub Pages 網址瀏覽)";
+                console.error(err);
+            }
         });
 
-        // 畫圖表的函數
-        function buildChart(rawData) {
-            // 定義 5 個資料集與顏色
+        // 產生核取方塊的函數
+        function createCheckboxes() {
+            const container = document.getElementById('checkboxContainer');
+            
+            allCategories.forEach(cat => {
+                const label = document.createElement('label');
+                label.className = 'checkbox-label';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = cat;
+                checkbox.checked = true; // 預設全部打勾
+                
+                // 當勾選狀態改變時，重新畫圖
+                checkbox.addEventListener('change', updateChart);
+                
+                label.appendChild(checkbox);
+                label.appendChild(document.createTextNode(cat));
+                container.appendChild(label);
+            });
+        }
+
+        // 根據勾選狀態更新圖表的函數
+        function updateChart() {
+            // 找出目前被打勾的分類
+            const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
+            const activeCategories = Array.from(checkboxes).map(cb => cb.value);
+
+            // 基礎資料集設定
             const datasetsConfig = [
                 { label: '高收高時', backgroundColor: 'Cyan', data: [] },
                 { label: '高收低時', backgroundColor: 'Green', data: [] },
@@ -95,31 +129,32 @@
             ];
 
             const categoryIndexMap = {
-                '高收高時': 0,
-                '高收低時': 1,
-                '低收高時': 2,
-                '低收低時': 3,
-                '導師': 4
+                '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4
             };
 
-            // 將解析後的資料分類放入 datasets
-            rawData.forEach(item => {
-                const idx = categoryIndexMap[item.category];
-                if(idx !== undefined) {
-                    datasetsConfig[idx].data.push(item);
+            // 只將「有被打勾」的資料塞入對應的群組
+            allParsedData.forEach(item => {
+                if (activeCategories.includes(item.category)) {
+                    const idx = categoryIndexMap[item.category];
+                    if (idx !== undefined) {
+                        datasetsConfig[idx].data.push(item);
+                    }
                 }
             });
 
-            // 如果畫面上已經有舊圖表，先把它銷毀，以免畫面重疊閃爍
+            // 過濾掉沒有被打勾的資料集（讓圖例乾淨）
+            const finalDatasets = datasetsConfig.filter(ds => activeCategories.includes(ds.label));
+
+            // 如果有舊圖，先銷毀
             if (myChartInstance) {
                 myChartInstance.destroy();
             }
 
-            // 建立新圖表
+            // 畫新圖
             const ctx = document.getElementById('myChart').getContext('2d');
             myChartInstance = new Chart(ctx, {
                 type: 'scatter',
-                data: { datasets: datasetsConfig },
+                data: { datasets: finalDatasets },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
