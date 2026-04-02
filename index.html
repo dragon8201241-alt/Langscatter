@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>公司內部 - 主播收益與時數看板</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/2.2.1/chartjs-plugin-annotation.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f7f6; margin: 0; padding: 20px; }
@@ -155,7 +157,7 @@
             myChartInstance = new Chart(ctx, {
                 type: 'scatter',
                 data: { datasets: finalDatasets },
-                options: {
+options: {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
@@ -170,7 +172,41 @@
                                     return `${pt.name} (ID: ${pt.id}) | 均時: ${pt.x} 小時 | 收益: ${pt.y.toLocaleString()} 鑽`;
                                 }
                             }
+                        },
+                        // 👇================ 新增的基準線功能從這裡開始 ================👇
+                        annotation: {
+                            annotations: {
+                                // 橫線 (Y=60萬)
+                                hLine: {
+                                    type: 'line',
+                                    yMin: 600000,
+                                    yMax: 600000,
+                                    borderColor: 'rgba(255, 0, 0, 0.6)', // 紅色半透明
+                                    borderWidth: 2,
+                                    borderDash: [5, 5], // 虛線樣式
+                                    label: {
+                                        display: true,
+                                        content: '收益 60 萬',
+                                        position: 'end'
+                                    }
+                                },
+                                // 直線 (X=40)
+                                vLine: {
+                                    type: 'line',
+                                    xMin: 40,
+                                    xMax: 40,
+                                    borderColor: 'rgba(0, 0, 255, 0.6)', // 藍色半透明
+                                    borderWidth: 2,
+                                    borderDash: [5, 5], // 虛線樣式
+                                    label: {
+                                        display: true,
+                                        content: '均時 40',
+                                        position: 'start' // 文字顯示在上方
+                                    }
+                                }
+                            }
                         }
+                        // 👆================ 新增的基準線功能到這裡結束 ================👆
                     },
                     scales: {
                         x: { title: { display: true, text: '1,2月均時 (小時)', font: { size: 14 } } },
