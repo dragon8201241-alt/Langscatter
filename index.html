@@ -228,11 +228,15 @@
                             annotations: currentAnnotations
                         }
                     },
-                    scales: {
-                        x: { title: { display: true, text: xTitle, font: { size: 14, weight: 'bold' } } },
-                        y: { title: { display: true, text: yTitle, font: { size: 14, weight: 'bold' } } }
+scales: {
+                        x: { 
+                            title: { display: true, text: xTitle, font: { size: 14, weight: 'bold' } } 
+                        },
+                        y: { 
+                            type: 'logarithmic', // 只讓收益變成對數刻度
+                            title: { display: true, text: yTitle, font: { size: 14, weight: 'bold' } } 
+                        }
                     }
-                }
             });
         }
     </script>
