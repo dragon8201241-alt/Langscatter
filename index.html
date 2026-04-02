@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>主播收益與時數散佈圖 (本地端讀取版)</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body { font-family: "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f9f9f9; }
+        .controls { margin: 20px auto; padding: 15px; background: white; width: 90%; max-width: 600px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .chart-wrapper { width: 90%; max-width: 1200px; height: 75vh; margin: 10px auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        input[type="file"] { font-size: 16px; padding: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h2>主播收益與時數散佈圖</h2>
+    
+    <div class="controls">
+        <label for="csvFileInput"><b>請選擇本地 CSV 檔案：</b></label>
+        <br><br>
+        <input type="file" id="csvFileInput" accept=".csv" />
+        <p style="font-size: 13px; color: #666; margin-top: 10px;">(資料僅在您的瀏覽器內運算，不會上傳至任何伺服器，安全無虞)</p>
+    </div>
+
+    <div class="chart-wrapper">
+        <canvas id="myChart"></canvas>
+    </div>
+
+    <script>
+        let myChartInstance = null; // 用來儲存圖表實例，以便重新上傳時可以清除舊圖
+
+        // 監聽檔案上傳按鈕的變化
+        document.getElementById('csvFileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 使用 PapaParse 讀取本地檔案
+            Papa.parse(file, {
+                header: true,
+                complete: function(results) {
+                    const rawData = [];
+                    // 定義 5 個分類欄位
+                    const categoryColumns = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
+
+                    // 處理資料
+                    results.data.forEach(row => {
+                        let category = null;
+                        let y_val = null;
+                        
+                        // 尋找在哪一個分類欄位有數值
+                        for(let col of categoryColumns) {
+                            if(row[col] && row[col].trim() !== '') {
+                                category = col;
+                                // 移除數字中的逗號並轉成浮點數
+                                y_val = parseFloat(row[col].replace(/,/g, ''));
+                                break;
+                            }
+                        }
+
+                        // 讀取 X 軸的均時數值
+                        let x_val = parseFloat(row['1,2月均時']);
+
+                        // 確保資料有效才加入圖表
+                        if(category && !isNaN(x_val) && !isNaN(y_val)) {
+                            rawData.push({
+                                id: row['主播ID'],
+                                name: row['主播暱稱'],
+                                x: x_val,
+                                y: y_val,
+                                category: category
+                            });
+                        }
+                    });
+
+                    // 畫圖
+                    buildChart(rawData);
+                },
+                error: function(err) {
+                    alert("檔案解析失敗，請確認是否為正確的 CSV 格式。");
+                    console.error(err);
+                }
+            });
+        });
+
+        // 畫圖表的函數
+        function buildChart(rawData) {
+            // 定義 5 個資料集與顏色
+            const datasetsConfig = [
+                { label: '高收高時', backgroundColor: 'Cyan', data: [] },
+                { label: '高收低時', backgroundColor: 'Green', data: [] },
+                { label: '低收高時', backgroundColor: 'Orange', data: [] },
+                { label: '低收低時', backgroundColor: 'Red', data: [] },
+                { label: '導師', backgroundColor: 'Blue', data: [] }
+            ];
+
+            const categoryIndexMap = {
+                '高收高時': 0,
+                '高收低時': 1,
+                '低收高時': 2,
+                '低收低時': 3,
+                '導師': 4
+            };
+
+            // 將解析後的資料分類放入 datasets
+            rawData.forEach(item => {
+                const idx = categoryIndexMap[item.category];
+                if(idx !== undefined) {
+                    datasetsConfig[idx].data.push(item);
+                }
+            });
+
+            // 如果畫面上已經有舊圖表，先把它銷毀，以免畫面重疊閃爍
+            if (myChartInstance) {
+                myChartInstance.destroy();
+            }
+
+            // 建立新圖表
+            const ctx = document.getElementById('myChart').getContext('2d');
+            myChartInstance = new Chart(ctx, {
+                type: 'scatter',
+                data: { datasets: datasetsConfig },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top', labels: { font: { size: 14 } } },
+                        tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.8)',
+                            titleFont: { size: 16 },
+                            bodyFont: { size: 14 },
+                            callbacks: {
+                                label: function(context) {
+                                    const pt = context.raw;
+                                    return `${pt.name} (ID: ${pt.id}) | 均時: ${pt.x} 小時 | 收益: ${pt.y.toLocaleString()} 鑽`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: '1,2月均時 (小時)', font: { size: 14 } } },
+                        y: { title: { display: true, text: '月均收益 (鑽)', font: { size: 14 } } }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
