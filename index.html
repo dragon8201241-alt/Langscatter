@@ -48,7 +48,7 @@
             
             <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
                 <strong>🔍 尋找主播：</strong>
-                <input type="text" id="idSearchInput" placeholder="輸入 ID..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 150px;">
+                <input type="text" id="idSearchInput" placeholder="輸入多個 ID (用空格或逗號隔開)..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 280px;">
                 <button onclick="clearSearch()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; transition: 0.2s;">清除搜尋</button>
             </div>
         </div>
@@ -66,7 +66,6 @@
         const allCategories = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
         let currentTab = 1;
         
-        // 儲存動態計算的指標，供第四頁畫達標線使用
         let globalMetrics = { median_days_A: 0, median_k_B: 0 };
 
         function getQuantile(arr, q) {
@@ -126,7 +125,6 @@
                     }
                 });
 
-                // ================= 動態運算第四頁的潛力股與同儕 =================
                 let k70 = getQuantile(k_arr, 0.7);
                 let l50 = getQuantile(l_arr, 0.5);
                 let days70 = getQuantile(days_arr, 0.7);
@@ -150,7 +148,6 @@
                     else if(typeB_ids.includes(d.id)) d.role4 = 'TypeB';
                     else if(cohortB.find(c=>c.id===d.id)) d.role4 = 'PeerB';
                 });
-                // ==============================================================
 
                 createCheckboxes();
                 updateChart();
@@ -193,7 +190,10 @@
         function updateChart() {
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
-            const searchId = document.getElementById('idSearchInput').value.trim();
+            
+            // 🚀 多筆搜尋核心邏輯：將輸入的字串用「逗號(半形/全形)」或「空格」切割成陣列，並過濾掉空字串
+            const rawSearchInput = document.getElementById('idSearchInput').value.trim();
+            const searchIds = rawSearchInput.split(/[,，\s]+/).filter(id => id !== '');
 
             let finalDatasets = [];
 
@@ -205,20 +205,18 @@
                     { label: '🎯 鐵人群同儕 (已達標)', backgroundColor: 'rgba(25, 118, 210, 0.2)', borderColor: 'rgba(25, 118, 210, 0.5)', borderWidth: 1, data: [] }
                 ];
 
-                // 🚀 第四頁：獨立出搜尋目標的資料集 (金黃高亮)
                 const targetDataset4 = {
                     label: '🔍 搜尋目標', backgroundColor: 'rgba(255, 215, 0, 0.9)', borderColor: '#000000', borderWidth: 2, data: []
                 };
 
                 allParsedData.forEach(item => {
-                    let isTarget = searchId && String(item.id) === searchId;
+                    // 🚀 判斷這筆資料的 ID 是否存在於我們的陣列中
+                    let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
                     
-                    // 如果是搜尋目標，放入高亮陣列 (稍微放大氣泡以利辨識)
                     if (isTarget) {
                         targetDataset4.data.push({ x: item.v3_x, y: item.v2_y, r: Math.max(8, item.v3_y * 4), sourceL: item.v3_y, id: item.id, name: item.name });
                     }
 
-                    // 如果屬於勾選的標籤，正常放入背景群組
                     if (activeCategories.includes(item.category)) {
                         let bubbleData = { x: item.v3_x, y: item.v2_y, r: Math.max(4, item.v3_y * 3), sourceL: item.v3_y, id: item.id, name: item.name };
                         if(item.role4 === 'TypeA') ds4[0].data.push(bubbleData);
@@ -228,7 +226,6 @@
                     }
                 });
 
-                // 如果有找到目標，就把目標圖層加進去
                 if (targetDataset4.data.length > 0) ds4.push(targetDataset4);
                 finalDatasets = ds4;
 
@@ -242,28 +239,26 @@
                 ];
                 const categoryIndexMap = { '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4 };
 
-                // 🚀 1~3 頁：獨立出搜尋目標的資料集 (金黃高亮)
                 const targetDataset = {
                     label: '🔍 搜尋目標', 
                     backgroundColor: 'rgba(255, 215, 0, 0.9)', 
                     borderColor: '#000000', 
                     borderWidth: 2, 
-                    pointRadius: currentTab === 3 ? undefined : 8, // 散佈圖時將點放大
+                    pointRadius: currentTab === 3 ? undefined : 8,
                     pointHoverRadius: currentTab === 3 ? undefined : 12,
                     data: []
                 };
 
                 allParsedData.forEach(item => {
-                    let isTarget = searchId && String(item.id) === searchId;
+                    // 🚀 判斷這筆資料的 ID 是否存在於我們的陣列中
+                    let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
 
-                    // 處理搜尋目標
                     if (isTarget) {
                         if (currentTab === 1) targetDataset.data.push({ x: item.v1_x, y: item.v1_y, id: item.id, name: item.name });
                         else if (currentTab === 2 && !isNaN(item.v2_x) && !isNaN(item.v2_y)) targetDataset.data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
                         else if (currentTab === 3 && item.v3_x > 0 && item.v3_y > 0) targetDataset.data.push({ x: item.v3_x, y: item.v3_y, r: item.v3_r * 1.5, rev: item.rev, id: item.id, name: item.name });
                     }
 
-                    // 維持原本有打勾的類別，當作對比的背景資料
                     if (activeCategories.includes(item.category)) {
                         const idx = categoryIndexMap[item.category];
                         if (idx !== undefined) {
@@ -274,9 +269,7 @@
                     }
                 });
 
-                // 將使用者有勾選的資料集過濾出來
                 finalDatasets = datasetsConfig.filter(ds => activeCategories.includes(ds.label));
-                // 只要有搜尋目標，就壓在陣列最後面 (確保它會畫在最上層！)
                 if (targetDataset.data.length > 0) finalDatasets.push(targetDataset);
             }
 
