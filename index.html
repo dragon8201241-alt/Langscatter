@@ -40,16 +40,16 @@
         
         <div id="loading">讀取資料中，請稍候...</div>
 
-<div class="filter-section" id="filterSection">
+        <div class="filter-section" id="filterSection">
             <strong>篩選標籤：</strong>
             <span id="checkboxContainer"></span>
-            
-            <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
-                <strong>🔍 尋找主播：</strong>
-                <input type="text" id="idSearchInput" placeholder="輸入 6 位數 ID..." maxlength="6" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 150px;">
-                <button onclick="clearSearch()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; transition: 0.2s;">清除搜尋</button>
-            </div>
         </div>
+
+        <div class="chart-wrapper">
+            <canvas id="myChart"></canvas>
+        </div>
+    </div>
+
     <script>
         const csvFileName = "data.csv"; 
         
@@ -150,14 +150,6 @@
                 // ==============================================================
 
                 createCheckboxes();
-// 監聽輸入框，只要有打字就即時更新圖表
-        document.getElementById('idSearchInput').addEventListener('input', updateChart);
-
-        // 清除搜尋按鈕的功能
-        function clearSearch() {
-            document.getElementById('idSearchInput').value = '';
-            updateChart(); // 重新畫圖，恢復顯示全部
-        }
                 updateChart();
             },
             error: function(err) {
@@ -190,45 +182,32 @@
             updateChart();
         }
 
-function updateChart() {
+        function updateChart() {
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
-            
-            // 新增：抓取搜尋框的 ID (並去除頭尾空白)
-            const searchId = document.getElementById('idSearchInput').value.trim(); 
 
             let finalDatasets = [];
 
             if (currentTab === 4) {
                 // 第四頁專屬的資料集配置 (紅藍對抗)
-                // ... (保留你原本設定 ds4 的程式碼) ...
+                const ds4 = [
+                    { label: '🌟 佛系潛力股 (缺天數)', backgroundColor: 'rgba(211, 47, 47, 0.9)', borderColor: '#b71c1c', borderWidth: 2, data: [] },
+                    { label: '🎯 佛系群同儕 (已達標)', backgroundColor: 'rgba(211, 47, 47, 0.2)', borderColor: 'rgba(211, 47, 47, 0.5)', borderWidth: 1, data: [] },
+                    { label: '🌱 鐵人潛力股 (缺時薪)', backgroundColor: 'rgba(25, 118, 210, 0.9)', borderColor: '#0d47a1', borderWidth: 2, data: [] },
+                    { label: '🎯 鐵人群同儕 (已達標)', backgroundColor: 'rgba(25, 118, 210, 0.2)', borderColor: 'rgba(25, 118, 210, 0.5)', borderWidth: 1, data: [] }
+                ];
 
                 allParsedData.forEach(item => {
-                    // 🚀 新增這行：如果有輸入 ID，且資料的 ID 不等於輸入的 ID，就跳過不畫
-                    if (searchId && String(item.id) !== searchId) return;
-
                     if (activeCategories.includes(item.category)) {
-                        // ... (保留你原本 push bubbleData 的程式碼) ...
+                        // 半徑依據單次時長(L)放大，方便閱讀
+                        let bubbleData = { x: item.v3_x, y: item.v2_y, r: Math.max(4, item.v3_y * 3), sourceL: item.v3_y, id: item.id, name: item.name };
+                        if(item.role4 === 'TypeA') ds4[0].data.push(bubbleData);
+                        else if(item.role4 === 'PeerA') ds4[1].data.push(bubbleData);
+                        else if(item.role4 === 'TypeB') ds4[2].data.push(bubbleData);
+                        else if(item.role4 === 'PeerB') ds4[3].data.push(bubbleData);
                     }
                 });
                 finalDatasets = ds4;
-
-            } else {
-                // 原本 1~3 頁的分類配置
-                // ... (保留你原本設定 datasetsConfig 的程式碼) ...
-
-                allParsedData.forEach(item => {
-                    // 🚀 新增這行：如果有輸入 ID，且資料的 ID 不等於輸入的 ID，就跳過不畫
-                    if (searchId && String(item.id) !== searchId) return;
-
-                    if (activeCategories.includes(item.category)) {
-                        // ... (保留你原本判斷 currentTab 1, 2, 3 並 push data 的程式碼) ...
-                    }
-                });
-                finalDatasets = datasetsConfig.filter(ds => activeCategories.includes(ds.label));
-            }
-            
-            // ... (下面維持原本的圖表繪製邏輯 ctx, new Chart...)                finalDatasets = ds4;
 
             } else {
                 // 原本 1~3 頁的分類配置
