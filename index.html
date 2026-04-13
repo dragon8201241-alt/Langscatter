@@ -69,7 +69,6 @@
         // 儲存動態計算的指標，供第四頁畫達標線使用
         let globalMetrics = { median_days_A: 0, median_k_B: 0 };
 
-        // 計算分位數的工具函數
         function getQuantile(arr, q) {
             if (arr.length === 0) return 0;
             let sorted = arr.slice().sort((a,b) => a - b);
@@ -109,7 +108,7 @@
                     let revStr = row['月均收益(校正)'] ? String(row['月均收益(校正)']).replace(/,/g, '') : String(v1_y);
                     let rev = parseFloat(revStr); 
                     let v3_y = v2_x; 
-                    let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; // 每月開播天數
+                    let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; 
                     let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 80);
 
                     if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
@@ -117,11 +116,10 @@
                             id: row['主播ID'], name: row['主播暱稱'], category: category,
                             v1_x: v1_x, v1_y: v1_y, v2_x: v2_x, v2_y: v2_y,
                             v3_x: v3_x, v3_y: v3_y, v3_r: v3_r, rev: rev,
-                            role4: 'Other' // 預設第四頁身分
+                            role4: 'Other' 
                         };
                         allParsedData.push(item);
 
-                        // 收集數值供分位數計算
                         if(v2_y > 0) k_arr.push(v2_y);
                         if(v3_y > 0) l_arr.push(v3_y);
                         if(v3_x > 0) days_arr.push(v3_x);
@@ -134,21 +132,18 @@
                 let days70 = getQuantile(days_arr, 0.7);
                 let l70 = getQuantile(l_arr, 0.7);
 
-                // Type A (佛系高產能) 群體與潛力股
                 let cohortA = allParsedData.filter(d => d.v2_y >= k70 && d.v3_y >= l50 && d.v3_x > 0);
                 globalMetrics.median_days_A = getQuantile(cohortA.map(d => d.v3_x), 0.5);
                 let typeA_ids = cohortA.filter(d => d.v3_x < globalMetrics.median_days_A).map(d => {
                     d.growth = (d.v2_y * d.v3_y * globalMetrics.median_days_A) - d.rev; return d;
                 }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
 
-                // Type B (苦勞型鐵人) 群體與潛力股
                 let cohortB = allParsedData.filter(d => d.v3_x >= days70 && d.v3_y >= l70 && d.v2_y > 0);
                 globalMetrics.median_k_B = getQuantile(cohortB.map(d => d.v2_y), 0.5);
                 let typeB_ids = cohortB.filter(d => d.v2_y < globalMetrics.median_k_B).map(d => {
                     d.growth = (globalMetrics.median_k_B * d.v1_x) - d.rev; return d;
                 }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
 
-                // 標記角色
                 allParsedData.forEach(d => {
                     if(typeA_ids.includes(d.id)) d.role4 = 'TypeA';
                     else if(cohortA.find(c=>c.id===d.id)) d.role4 = 'PeerA';
@@ -190,7 +185,6 @@
             updateChart();
         }
 
-        // 🚀 新增：清除搜尋輸入框的功能
         function clearSearch() {
             document.getElementById('idSearchInput').value = '';
             updateChart();
@@ -199,14 +193,11 @@
         function updateChart() {
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
-            
-            // 🚀 新增：抓取目前的搜尋 ID，並去除頭尾空白
             const searchId = document.getElementById('idSearchInput').value.trim();
 
             let finalDatasets = [];
 
             if (currentTab === 4) {
-                // 第四頁專屬的資料集配置 (紅藍對抗)
                 const ds4 = [
                     { label: '🌟 佛系潛力股 (缺天數)', backgroundColor: 'rgba(211, 47, 47, 0.9)', borderColor: '#b71c1c', borderWidth: 2, data: [] },
                     { label: '🎯 佛系群同儕 (已達標)', backgroundColor: 'rgba(211, 47, 47, 0.2)', borderColor: 'rgba(211, 47, 47, 0.5)', borderWidth: 1, data: [] },
@@ -214,12 +205,21 @@
                     { label: '🎯 鐵人群同儕 (已達標)', backgroundColor: 'rgba(25, 118, 210, 0.2)', borderColor: 'rgba(25, 118, 210, 0.5)', borderWidth: 1, data: [] }
                 ];
 
-                allParsedData.forEach(item => {
-                    // 🚀 關鍵過濾邏輯：如果有搜尋條件，且此筆資料的 ID 不符合，則略過
-                    if (searchId && String(item.id) !== searchId) return;
+                // 🚀 第四頁：獨立出搜尋目標的資料集 (金黃高亮)
+                const targetDataset4 = {
+                    label: '🔍 搜尋目標', backgroundColor: 'rgba(255, 215, 0, 0.9)', borderColor: '#000000', borderWidth: 2, data: []
+                };
 
+                allParsedData.forEach(item => {
+                    let isTarget = searchId && String(item.id) === searchId;
+                    
+                    // 如果是搜尋目標，放入高亮陣列 (稍微放大氣泡以利辨識)
+                    if (isTarget) {
+                        targetDataset4.data.push({ x: item.v3_x, y: item.v2_y, r: Math.max(8, item.v3_y * 4), sourceL: item.v3_y, id: item.id, name: item.name });
+                    }
+
+                    // 如果屬於勾選的標籤，正常放入背景群組
                     if (activeCategories.includes(item.category)) {
-                        // 半徑依據單次時長(L)放大，方便閱讀
                         let bubbleData = { x: item.v3_x, y: item.v2_y, r: Math.max(4, item.v3_y * 3), sourceL: item.v3_y, id: item.id, name: item.name };
                         if(item.role4 === 'TypeA') ds4[0].data.push(bubbleData);
                         else if(item.role4 === 'PeerA') ds4[1].data.push(bubbleData);
@@ -227,10 +227,12 @@
                         else if(item.role4 === 'PeerB') ds4[3].data.push(bubbleData);
                     }
                 });
+
+                // 如果有找到目標，就把目標圖層加進去
+                if (targetDataset4.data.length > 0) ds4.push(targetDataset4);
                 finalDatasets = ds4;
 
             } else {
-                // 原本 1~3 頁的分類配置
                 const datasetsConfig = [
                     { label: '高收高時', backgroundColor: 'rgba(0, 255, 255, 0.5)', borderColor: 'rgba(0, 206, 209, 0.9)', borderWidth: 1, data: [] },
                     { label: '高收低時', backgroundColor: 'rgba(0, 128, 0, 0.5)', borderColor: 'rgba(0, 100, 0, 0.9)', borderWidth: 1, data: [] },
@@ -240,10 +242,28 @@
                 ];
                 const categoryIndexMap = { '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4 };
 
-                allParsedData.forEach(item => {
-                    // 🚀 關鍵過濾邏輯：如果有搜尋條件，且此筆資料的 ID 不符合，則略過
-                    if (searchId && String(item.id) !== searchId) return;
+                // 🚀 1~3 頁：獨立出搜尋目標的資料集 (金黃高亮)
+                const targetDataset = {
+                    label: '🔍 搜尋目標', 
+                    backgroundColor: 'rgba(255, 215, 0, 0.9)', 
+                    borderColor: '#000000', 
+                    borderWidth: 2, 
+                    pointRadius: currentTab === 3 ? undefined : 8, // 散佈圖時將點放大
+                    pointHoverRadius: currentTab === 3 ? undefined : 12,
+                    data: []
+                };
 
+                allParsedData.forEach(item => {
+                    let isTarget = searchId && String(item.id) === searchId;
+
+                    // 處理搜尋目標
+                    if (isTarget) {
+                        if (currentTab === 1) targetDataset.data.push({ x: item.v1_x, y: item.v1_y, id: item.id, name: item.name });
+                        else if (currentTab === 2 && !isNaN(item.v2_x) && !isNaN(item.v2_y)) targetDataset.data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
+                        else if (currentTab === 3 && item.v3_x > 0 && item.v3_y > 0) targetDataset.data.push({ x: item.v3_x, y: item.v3_y, r: item.v3_r * 1.5, rev: item.rev, id: item.id, name: item.name });
+                    }
+
+                    // 維持原本有打勾的類別，當作對比的背景資料
                     if (activeCategories.includes(item.category)) {
                         const idx = categoryIndexMap[item.category];
                         if (idx !== undefined) {
@@ -253,12 +273,15 @@
                         }
                     }
                 });
+
+                // 將使用者有勾選的資料集過濾出來
                 finalDatasets = datasetsConfig.filter(ds => activeCategories.includes(ds.label));
+                // 只要有搜尋目標，就壓在陣列最後面 (確保它會畫在最上層！)
+                if (targetDataset.data.length > 0) finalDatasets.push(targetDataset);
             }
 
             if (myChartInstance) myChartInstance.destroy();
 
-            // 判斷使用的圖表類型與刻度
             const chartType = (currentTab === 3 || currentTab === 4) ? 'bubble' : 'scatter';
 
             let xTitle = currentTab === 1 ? '1,2月均時 (小時)' : currentTab === 2 ? '時 / 天 (每天平均開播時長)' : '每月開播天數 (天/月)';
@@ -275,7 +298,6 @@
                     vLine: { type: 'line', xMin: 40, xMax: 40, borderColor: 'rgba(0, 0, 255, 0.7)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: '均時 40', position: 'start' } }
                 };
             } else if (currentTab === 4) {
-                // 第四頁專屬達標輔助線
                 currentAnnotations = {
                     hLine: { type: 'line', yMin: globalMetrics.median_k_B, yMax: globalMetrics.median_k_B, borderColor: 'rgba(25, 118, 210, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `鐵人時薪達標線 (${Math.round(globalMetrics.median_k_B)})`, position: 'start', backgroundColor: 'rgba(25, 118, 210, 0.8)' } },
                     vLine: { type: 'line', xMin: globalMetrics.median_days_A, xMax: globalMetrics.median_days_A, borderColor: 'rgba(211, 47, 47, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `佛系天數達標線 (${Math.round(globalMetrics.median_days_A)}天)`, position: 'start', backgroundColor: 'rgba(211, 47, 47, 0.8)' } }
