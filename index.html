@@ -24,6 +24,11 @@
         
         #loading { font-size: 18px; color: #0066cc; font-weight: bold; padding: 40px; }
         .chart-wrapper { width: 100%; height: 65vh; position: relative; }
+        
+        /* 🚀 新增摘要面板的樣式 */
+        #summaryWrapper { display: none; text-align: left; height: 65vh; overflow-y: auto; padding: 10px; background: #fdfdfd; border-radius: 8px; }
+        .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; }
+        .summary-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body>
@@ -36,6 +41,7 @@
             <button class="tab-btn" onclick="switchTab(2)">⚡ 變現效率</button>
             <button class="tab-btn" onclick="switchTab(3)">🎯 策略對決</button>
             <button class="tab-btn" onclick="switchTab(4)" style="color:#d32f2f; font-weight:bold;">🚀 潛力股同儕分析</button>
+            <button class="tab-btn" onclick="switchTab(5)" style="color:#00796b; font-weight:bold;">📝 個人摘要報表</button>
         </div>
         
         <div id="loading">讀取資料中，請稍候...</div>
@@ -53,9 +59,11 @@
             </div>
         </div>
 
-        <div class="chart-wrapper">
+        <div class="chart-wrapper" id="chartWrapper">
             <canvas id="myChart"></canvas>
         </div>
+        
+        <div id="summaryWrapper"></div>
     </div>
 
     <script>
@@ -75,6 +83,14 @@
             let base = Math.floor(pos);
             let rest = pos - base;
             return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+        }
+
+        // 🚀 新增計算 PR 值的共用函數
+        function getPR(value, arr) {
+            if (arr.length === 0) return 0;
+            // 找出多少人的數值「小於」該值，換算成百分比
+            let count = arr.filter(v => v < value).length;
+            return Math.round((count / arr.length) * 100);
         }
 
         Papa.parse(csvFileName, {
@@ -173,12 +189,21 @@
             });
         }
 
+        // 🚀 修改切換 Tab 邏輯，處理第 5 頁的隱藏與顯示
         function switchTab(tabId) {
             currentTab = tabId;
             const buttons = document.querySelectorAll('.tab-btn');
             buttons.forEach((btn, index) => {
                 btn.className = (index + 1 === tabId) ? 'tab-btn active' : 'tab-btn';
             });
+
+            if (tabId === 5) {
+                document.getElementById('chartWrapper').style.display = 'none';
+                document.getElementById('summaryWrapper').style.display = 'block';
+            } else {
+                document.getElementById('chartWrapper').style.display = 'block';
+                document.getElementById('summaryWrapper').style.display = 'none';
+            }
             updateChart();
         }
 
@@ -191,10 +216,88 @@
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
             
-            // 🚀 多筆搜尋核心邏輯：將輸入的字串用「逗號(半形/全形)」或「空格」切割成陣列，並過濾掉空字串
             const rawSearchInput = document.getElementById('idSearchInput').value.trim();
             const searchIds = rawSearchInput.split(/[,，\s]+/).filter(id => id !== '');
 
+            // ==========================================
+            // 🚀 第五頁：個人摘要報表生成邏輯
+            // ==========================================
+            if (currentTab === 5) {
+                const summaryDiv = document.getElementById('summaryWrapper');
+                
+                if (searchIds.length === 0) {
+                    summaryDiv.innerHTML = '<div style="text-align:center; padding:60px; color:#777; font-size:18px;">🔍 請在上方搜尋框輸入 ID（可多筆），以產生個人摘要報表！</div>';
+                    return; 
+                }
+
+                let htmlContent = '';
+                
+                searchIds.forEach(id => {
+                    const user = allParsedData.find(d => String(d.id) === id);
+                    if (!user) {
+                        htmlContent += `<div class="summary-card" style="border-left-color: #9e9e9e; color: #d32f2f;">❌ 找不到 ID: <strong>${id}</strong> 的資料，請確認輸入正確。</div>`;
+                        return; // 繼續下一個 ID
+                    }
+
+                    // 取出該主播「所屬分組」的所有資料來算 PR
+                    const groupData = allParsedData.filter(d => d.category === user.category);
+                    
+                    const revPR = getPR(user.rev, groupData.map(d => d.rev));
+                    const hrsPR = getPR(user.v1_x, groupData.map(d => d.v1_x));
+
+                    // 依據第 4 個 TAB 的潛力股角色給予 50 字內策略
+                    let strategyText = "目前處於蓄力期。建議穩定每週開播頻率與時長，培養固定觀眾群；並多觀摩優秀主播，逐步提升變現能力！";
+                    let roleIcon = "🌱";
+                    
+                    if (user.role4 === 'TypeA') {
+                        strategyText = "時薪極佳具備頂尖變現力！目前僅缺開播天數，建議維持直播品質，增加每月開播頻率，即可大幅突破總收益！";
+                        roleIcon = "🌟";
+                    } else if (user.role4 === 'PeerA') {
+                        strategyText = "表現優異且穩定！天數與產能皆達標，建議維持高質量節奏，可嘗試新企劃或粉絲互動，穩固鐵粉基底。";
+                        roleIcon = "🎯";
+                    } else if (user.role4 === 'TypeB') {
+                        strategyText = "開播毅力驚人！天數達標但單時收益偏低。建議優化直播內容，增強觀眾互動玩法，專注提升單小時變現效率！";
+                        roleIcon = "🔥";
+                    } else if (user.role4 === 'PeerB') {
+                        strategyText = "實力與努力兼具！時數與效率皆達高標，建議保持穩定輸出的同時，注意身心休息，確保持續健康的營運表現。";
+                        roleIcon = "🏆";
+                    }
+
+                    htmlContent += `
+                    <div class="summary-card">
+                        <h3 style="margin-top:0; margin-bottom:15px; color:#333; font-size:20px;">
+                            ${roleIcon} ${user.name} 
+                            <span style="font-size:14px; color:#888; font-weight:normal;">(ID: ${user.id}) | 🏷️ 分組：${user.category}</span>
+                        </h3>
+                        
+                        <div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom: 20px;">
+                            <div style="background:#fef5f5; border: 1px solid #fbdada; padding:12px; border-radius:8px; flex:1; min-width:200px;">
+                                <div style="font-size:13px; color:#666; margin-bottom:5px;">💰 月均收益表現</div>
+                                <div style="font-size:16px; font-weight:bold; color:#333;">${user.rev.toLocaleString()} 鑽</div>
+                                <div style="font-size:15px; color:#d32f2f; margin-top:5px;">📊 同組 PR 值： <strong>${revPR}</strong></div>
+                            </div>
+                            <div style="background:#f0f8ff; border: 1px solid #d6eaf8; padding:12px; border-radius:8px; flex:1; min-width:200px;">
+                                <div style="font-size:13px; color:#666; margin-bottom:5px;">⏱️ 平均開播時數</div>
+                                <div style="font-size:16px; font-weight:bold; color:#333;">${user.v1_x.toFixed(1)} 小時</div>
+                                <div style="font-size:15px; color:#0066cc; margin-top:5px;">📊 同組 PR 值： <strong>${hrsPR}</strong></div>
+                            </div>
+                        </div>
+
+                        <div style="background:#fffde7; border-left: 4px solid #fbc02d; padding:15px; border-radius:4px;">
+                            <strong style="color:#555;">💡 營運達標策略：</strong>
+                            <p style="margin:8px 0 0 0; color:#444; font-size:15px; line-height:1.5;">${strategyText}</p>
+                        </div>
+                    </div>
+                    `;
+                });
+                
+                summaryDiv.innerHTML = htmlContent;
+                return; // 🎯 若為第5頁，到此為止不跑後面的畫圖邏輯
+            }
+
+            // ==========================================
+            // 以下為 1~4 頁原本的圖表渲染邏輯
+            // ==========================================
             let finalDatasets = [];
 
             if (currentTab === 4) {
@@ -210,7 +313,6 @@
                 };
 
                 allParsedData.forEach(item => {
-                    // 🚀 判斷這筆資料的 ID 是否存在於我們的陣列中
                     let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
                     
                     if (isTarget) {
@@ -250,7 +352,6 @@
                 };
 
                 allParsedData.forEach(item => {
-                    // 🚀 判斷這筆資料的 ID 是否存在於我們的陣列中
                     let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
 
                     if (isTarget) {
