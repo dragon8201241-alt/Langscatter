@@ -41,8 +41,16 @@
         <div id="loading">讀取資料中，請稍候...</div>
 
         <div class="filter-section" id="filterSection">
-            <strong>篩選標籤：</strong>
-            <span id="checkboxContainer"></span>
+            <div>
+                <strong>篩選標籤：</strong>
+                <span id="checkboxContainer"></span>
+            </div>
+            
+            <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                <strong>🔍 尋找主播：</strong>
+                <input type="text" id="idSearchInput" placeholder="輸入 ID..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 150px;">
+                <button onclick="clearSearch()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; transition: 0.2s;">清除搜尋</button>
+            </div>
         </div>
 
         <div class="chart-wrapper">
@@ -182,9 +190,18 @@
             updateChart();
         }
 
+        // 🚀 新增：清除搜尋輸入框的功能
+        function clearSearch() {
+            document.getElementById('idSearchInput').value = '';
+            updateChart();
+        }
+
         function updateChart() {
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
+            
+            // 🚀 新增：抓取目前的搜尋 ID，並去除頭尾空白
+            const searchId = document.getElementById('idSearchInput').value.trim();
 
             let finalDatasets = [];
 
@@ -198,6 +215,9 @@
                 ];
 
                 allParsedData.forEach(item => {
+                    // 🚀 關鍵過濾邏輯：如果有搜尋條件，且此筆資料的 ID 不符合，則略過
+                    if (searchId && String(item.id) !== searchId) return;
+
                     if (activeCategories.includes(item.category)) {
                         // 半徑依據單次時長(L)放大，方便閱讀
                         let bubbleData = { x: item.v3_x, y: item.v2_y, r: Math.max(4, item.v3_y * 3), sourceL: item.v3_y, id: item.id, name: item.name };
@@ -221,6 +241,9 @@
                 const categoryIndexMap = { '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4 };
 
                 allParsedData.forEach(item => {
+                    // 🚀 關鍵過濾邏輯：如果有搜尋條件，且此筆資料的 ID 不符合，則略過
+                    if (searchId && String(item.id) !== searchId) return;
+
                     if (activeCategories.includes(item.category)) {
                         const idx = categoryIndexMap[item.category];
                         if (idx !== undefined) {
