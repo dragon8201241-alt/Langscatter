@@ -103,7 +103,7 @@
                     document.getElementById('filterSection').style.display = 'block';
                     
                     let k_arr = [], l_arr = [], days_arr = [];
-                    let overall_v2_x_arr = [], overall_v2_y_arr = []; // 為了計算第二頁的中位數
+                    let overall_v2_x_arr = [], overall_v2_y_arr = [];
 
                     results.data.forEach(row => {
                         let category = null;
@@ -141,13 +141,11 @@
                             if(v3_y > 0) l_arr.push(v3_y);
                             if(v3_x > 0) days_arr.push(v3_x);
                             
-                            // 收集 V2 的所有 X 與 Y 供中位數計算
                             if(!isNaN(v2_x) && v2_x > 0) overall_v2_x_arr.push(v2_x);
                             if(!isNaN(v2_y) && v2_y > 0) overall_v2_y_arr.push(v2_y);
                         }
                     });
 
-                    // 🚀 記錄 Tab 2 的全體中位數
                     globalMetrics.median_v2_x = getQuantile(overall_v2_x_arr, 0.5);
                     globalMetrics.median_v2_y = getQuantile(overall_v2_y_arr, 0.5);
 
@@ -288,7 +286,6 @@
                     const blueStyle  = "background:#e3f2fd; border: 1px solid #bbdefb; " + baseBoxStyle;
                     const redStyle   = "background:#fff5f5; border: 1px solid #ffcdd2; " + baseBoxStyle;
 
-                    // 記錄燈號顏色供後續判斷策略
                     let hrsColor, effColor;
 
                     let revBoxStyle, revTextColor;
@@ -300,8 +297,9 @@
                         revBoxStyle = redStyle; revTextColor = '#c62828';
                     }
 
+                    // 🚀 更新：平均開播時數顏色規則
                     let hrsBoxStyle, hrsTextColor;
-                    if (user.v1_x >= 40) {
+                    if (overallHrsPR > 50) {
                         hrsBoxStyle = greenStyle; hrsTextColor = '#2e7d32'; hrsColor = 'green';
                     } else if (hrsPR > 50) {
                         hrsBoxStyle = blueStyle; hrsTextColor = '#1565c0'; hrsColor = 'blue';
@@ -318,10 +316,8 @@
                         effBoxStyle = redStyle; effTextColor = '#c62828'; effColor = 'red';
                     }
 
-                    // 🚀 50字(100字內)精準策略建議
                     let strategy = "";
                     if (user.rev >= 600000) {
-                        // 針對已達 60 萬的王者，看其他兩項的成色給予 100 字內建議
                         if (hrsColor === 'green' && effColor === 'green') {
                             strategy = "完美表現！時數充足且產能極高，是全公司的標竿。建議維持現有高質量互動，可嘗試帶領新人或開創新企劃，進一步擴大影響力與粉絲黏著度！";
                         } else if (hrsColor === 'green' && effColor === 'blue') {
@@ -342,7 +338,6 @@
                             strategy = "收益奇蹟達標！儘管時數與產能指標未顯著突出，總收益表現卻很亮眼。可能是單次大秀或高黏著度鐵粉發力，建議深入分析本月高光時刻，將其複製為常態模式。";
                         }
                     } else {
-                        // 未達 60 萬的潛力股，原有邏輯
                         const isRevGood = (revPR > 50 || overallRevPR > 50);
                         const isHrsGood = (hrsPR > 50 || overallHrsPR > 50);
                         const isEffGood = (effPR > 50 || overallEffPR > 50);
@@ -501,7 +496,6 @@
                     vLine: { type: 'line', xMin: 40, xMax: 40, borderColor: 'rgba(0, 0, 255, 0.7)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: '均時 40', position: 'start' } }
                 };
             } else if (currentTab === 2) {
-                // 🚀 Tab 2 新增全體中位數輔助線
                 currentAnnotations = {
                     hLine: { type: 'line', yMin: globalMetrics.median_v2_y, yMax: globalMetrics.median_v2_y, borderColor: 'rgba(25, 118, 210, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `產能中位數: ${Math.round(globalMetrics.median_v2_y)}`, position: 'end', backgroundColor: 'rgba(25, 118, 210, 0.8)' } },
                     vLine: { type: 'line', xMin: globalMetrics.median_v2_x, xMax: globalMetrics.median_v2_x, borderColor: 'rgba(211, 47, 47, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `時長中位數: ${globalMetrics.median_v2_x.toFixed(1)}h`, position: 'start', backgroundColor: 'rgba(211, 47, 47, 0.8)' } }
