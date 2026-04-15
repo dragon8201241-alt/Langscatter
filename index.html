@@ -61,7 +61,7 @@
 
             <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
                 <strong>🔍 尋找主播：</strong>
-                <input type="text" id="idSearchInput" placeholder="輸入多個 ID (用空格或逗號隔開)..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 280px;">
+                <input type="text" id="idSearchInput" placeholder="輸入多個 ID 或在圖表上點擊..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 280px;">
                 <button onclick="clearSearch()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; transition: 0.2s;">清除搜尋</button>
             </div>
         </div>
@@ -111,7 +111,7 @@
                     
                     let k_arr = [], l_arr = [], days_arr = [];
                     let overall_v2_x_arr = [], overall_v2_y_arr = [];
-                    let agentsSet = new Set(); // 🚀 新增：用來收集唯一的經紀人名單
+                    let agentsSet = new Set(); 
 
                     results.data.forEach(row => {
                         let category = null;
@@ -136,7 +136,7 @@
                         let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; 
                         let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 80);
                         
-                        let agent = row['負責經紀'] ? row['負責經紀'].trim() : '未指派'; // 🚀 抓取負責經紀
+                        let agent = row['負責經紀'] ? row['負責經紀'].trim() : '未指派'; 
 
                         if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
                             let item = {
@@ -144,10 +144,10 @@
                                 v1_x: v1_x, v1_y: v1_y, v2_x: v2_x, v2_y: v2_y,
                                 v3_x: v3_x, v3_y: v3_y, v3_r: v3_r, rev: rev,
                                 role4: 'Other',
-                                agent: agent // 🚀 記錄到資料中
+                                agent: agent 
                             };
                             allParsedData.push(item);
-                            agentsSet.add(agent); // 🚀 加進名單集合裡
+                            agentsSet.add(agent); 
 
                             if(v2_y > 0) k_arr.push(v2_y);
                             if(v3_y > 0) l_arr.push(v3_y);
@@ -158,7 +158,6 @@
                         }
                     });
 
-                    // 🚀 動態生成經紀人 Dropdown 選項
                     const agentSelect = document.getElementById('agentFilter');
                     agentSelect.innerHTML = '<option value="ALL">全選 (顯示全部)</option>';
                     Array.from(agentsSet).sort().forEach(agent => {
@@ -277,7 +276,7 @@
             
             const rawSearchInput = document.getElementById('idSearchInput').value.trim();
             const searchIds = rawSearchInput.split(/[,，\s]+/).filter(id => id !== '');
-            const selectedAgent = document.getElementById('agentFilter').value; // 🚀 取得目前選取的經紀人
+            const selectedAgent = document.getElementById('agentFilter').value; 
 
             if (currentTab === 5) {
                 const summaryDiv = document.getElementById('summaryWrapper');
@@ -441,7 +440,6 @@
                 };
 
                 allParsedData.forEach(item => {
-                    // 🚀 過濾經紀人 (適用於 Tab 1-4)
                     if (selectedAgent !== "ALL" && item.agent !== selectedAgent) return;
                     
                     let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
@@ -483,7 +481,6 @@
                 };
 
                 allParsedData.forEach(item => {
-                    // 🚀 過濾經紀人 (適用於 Tab 1-4)
                     if (selectedAgent !== "ALL" && item.agent !== selectedAgent) return;
 
                     let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
@@ -543,6 +540,31 @@
                 data: { datasets: finalDatasets },
                 options: {
                     responsive: true, maintainAspectRatio: false,
+                    // 🚀 新增：點擊圖表元素事件
+                    onClick: (event, elements, chart) => {
+                        if (elements && elements.length > 0) {
+                            const element = elements[0];
+                            const datasetIndex = element.datasetIndex;
+                            const dataIndex = element.index;
+                            const pt = chart.data.datasets[datasetIndex].data[dataIndex];
+                            
+                            if (pt && pt.id) {
+                                const searchInput = document.getElementById('idSearchInput');
+                                let currentVal = searchInput.value.trim();
+                                let ids = currentVal.split(/[,，\s]+/).filter(id => id !== '');
+                                
+                                // 若尚未加入過該 ID，則加入並加上空格
+                                if (!ids.includes(String(pt.id))) {
+                                    searchInput.value = currentVal ? currentVal + ' ' + pt.id : String(pt.id);
+                                    updateChart(); // 觸發畫面更新
+                                }
+                            }
+                        }
+                    },
+                    // 🚀 新增：滑鼠懸停變更游標提示
+                    onHover: (event, elements, chart) => {
+                        chart.canvas.style.cursor = (elements && elements.length > 0) ? 'pointer' : 'default';
+                    },
                     plugins: {
                         legend: { position: 'top', labels: { font: { size: 14 } } },
                         tooltip: {
