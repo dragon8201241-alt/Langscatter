@@ -252,22 +252,48 @@
                     const overallHrsPR = getPR(user.v1_x, allParsedData.map(d => d.v1_x));
                     const overallEffPR = getPR(user.v2_y, allParsedData.map(d => d.v2_y));
 
-                    // 判斷哪些指標亮綠燈 (分組或全體其中之一 > 50 即可)
+                    // ==========================================
+                    // 🚀 新增：紅綠藍三色動態框邏輯
+                    // ==========================================
+                    const baseBoxStyle = "padding:12px; border-radius:8px; flex:1; min-width:200px;";
+                    const greenStyle = "background:#f1f8e9; border: 1px solid #c8e6c9; " + baseBoxStyle;
+                    const blueStyle  = "background:#e3f2fd; border: 1px solid #bbdefb; " + baseBoxStyle;
+                    const redStyle   = "background:#fff5f5; border: 1px solid #ffcdd2; " + baseBoxStyle;
+
+                    // 1. 月均收益表現
+                    let revBoxStyle, revTextColor;
+                    if (user.rev >= 600000) {
+                        revBoxStyle = greenStyle; revTextColor = '#2e7d32';
+                    } else if (revPR > 50) {
+                        revBoxStyle = blueStyle; revTextColor = '#1565c0';
+                    } else {
+                        revBoxStyle = redStyle; revTextColor = '#c62828';
+                    }
+
+                    // 2. 平均開播時數
+                    let hrsBoxStyle, hrsTextColor;
+                    if (user.v1_x >= 40) {
+                        hrsBoxStyle = greenStyle; hrsTextColor = '#2e7d32';
+                    } else if (hrsPR > 50) {
+                        hrsBoxStyle = blueStyle; hrsTextColor = '#1565c0';
+                    } else {
+                        hrsBoxStyle = redStyle; hrsTextColor = '#c62828';
+                    }
+
+                    // 3. 變現效率
+                    let effBoxStyle, effTextColor;
+                    if (overallEffPR > 50) {
+                        effBoxStyle = greenStyle; effTextColor = '#2e7d32';
+                    } else if (effPR > 50) {
+                        effBoxStyle = blueStyle; effTextColor = '#1565c0';
+                    } else {
+                        effBoxStyle = redStyle; effTextColor = '#c62828';
+                    }
+
+                    // 判斷哪些指標大於 PR 50，以利後續產出策略與卡片邊框
                     const isRevGood = (revPR > 50 || overallRevPR > 50);
                     const isHrsGood = (hrsPR > 50 || overallHrsPR > 50);
                     const isEffGood = (effPR > 50 || overallEffPR > 50);
-
-                    // 定義紅綠燈樣式
-                    const greenStyle = "background:#f1f8e9; border: 1px solid #c8e6c9; padding:12px; border-radius:8px; flex:1; min-width:200px;";
-                    const redStyle = "background:#fff5f5; border: 1px solid #ffcdd2; padding:12px; border-radius:8px; flex:1; min-width:200px;";
-
-                    const revBoxStyle = isRevGood ? greenStyle : redStyle;
-                    const hrsBoxStyle = isHrsGood ? greenStyle : redStyle;
-                    const effBoxStyle = isEffGood ? greenStyle : redStyle;
-
-                    const revTextColor = isRevGood ? '#2e7d32' : '#c62828';
-                    const hrsTextColor = isHrsGood ? '#2e7d32' : '#c62828';
-                    const effTextColor = isEffGood ? '#2e7d32' : '#c62828';
 
                     // 🚀 50字內精準策略建議
                     let strategy = "";
