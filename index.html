@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>公司內部 - 主播收益與時數看板</title>
+    <title>公司內部 - 主播營運數據分析看板</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
@@ -12,20 +12,22 @@
         .dashboard-container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         h2 { color: #333; margin-top: 0; margin-bottom: 20px; }
         
-        /* 分頁按鈕樣式 */
-        .tabs { display: flex; justify-content: center; margin-bottom: 20px; border-bottom: 2px solid #ddd; }
-        .tab-btn { padding: 12px 25px; margin: 0 5px; font-size: 16px; cursor: pointer; background: #eef2f5; border: none; border-radius: 8px 8px 0 0; color: #555; transition: 0.3s; }
+        .tabs { display: flex; justify-content: center; margin-bottom: 20px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
+        .tab-btn { padding: 10px 15px; margin: 0 3px; font-size: 14px; cursor: pointer; background: #eef2f5; border: none; border-radius: 8px 8px 0 0; color: #555; transition: 0.3s; }
         .tab-btn:hover { background: #dce4e8; }
         .tab-btn.active { background: #0066cc; color: white; font-weight: bold; }
 
-        /* 篩選器樣式 */
         .filter-section { background: #eef2f5; padding: 15px; border-radius: 8px; margin-bottom: 20px; display: none; text-align: left; }
         .filter-section strong { margin-right: 15px; color: #444; }
-        .checkbox-label { margin-right: 15px; cursor: pointer; font-size: 15px; display: inline-flex; align-items: center; }
+        .checkbox-label { margin-right: 15px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; }
         .checkbox-label input { margin-right: 5px; width: 16px; height: 16px; cursor: pointer; }
         
-        #loading { font-size: 18px; color: #0066cc; font-weight: bold; padding: 40px; }
-        .chart-wrapper { width: 100%; height: 65vh; position: relative; }
+        #loading { font-size: 18px; color: #0066cc; font-weight: bold; padding: 20px; }
+        .chart-wrapper { width: 100%; height: 65vh; position: relative; display: none; }
+        
+        #summaryWrapper { display: none; text-align: left; height: 65vh; overflow-y: auto; padding: 10px; background: #fdfdfd; border-radius: 8px; }
+        .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; }
+        .summary-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
     </style>
 </head>
 <body>
@@ -33,204 +35,423 @@
     <div class="dashboard-container">
         <h2>主播營運數據分析看板</h2>
         
-        <div class="tabs" id="tabNav" style="display: none;">
-            <button class="tab-btn active" onclick="switchTab(1)">📊 總體表現 (均時 vs 月均收益)</button>
-            <button class="tab-btn" onclick="switchTab(2)">⚡ 變現效率 (時/天 vs 收益/時)</button>
-        </div>
+        <div id="loading">🚀 正在從 GitHub 讀取最新資料與運算中，請稍候...</div>
         
-        <div id="loading">讀取資料中，請稍候...</div>
+        <div class="tabs" id="tabNav" style="display: none;">
+            <button class="tab-btn active" onclick="switchTab(1)">📊 總體表現</button>
+            <button class="tab-btn" onclick="switchTab(2)">⚡ 變現效率</button>
+            <button class="tab-btn" onclick="switchTab(3)">🎯 策略對決</button>
+            <button class="tab-btn" onclick="switchTab(4)" style="color:#d32f2f; font-weight:bold;">🚀 潛力股同儕分析</button>
+            <button class="tab-btn" onclick="switchTab(5)" style="color:#00796b; font-weight:bold;">📝 個人摘要報表</button>
+        </div>
 
         <div class="filter-section" id="filterSection">
-            <strong>篩選顯示標籤：</strong>
-            <span id="checkboxContainer"></span>
+            <div>
+                <strong>篩選標籤：</strong>
+                <span id="checkboxContainer"></span>
+            </div>
+            
+            <div style="margin-top: 15px; border-top: 1px dashed #ccc; padding-top: 15px;">
+                <strong>🔍 尋找主播：</strong>
+                <input type="text" id="idSearchInput" placeholder="輸入多個 ID (用空格或逗號隔開)..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 280px;">
+                <button onclick="clearSearch()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; transition: 0.2s;">清除搜尋</button>
+            </div>
         </div>
 
-        <div class="chart-wrapper">
+        <div class="chart-wrapper" id="chartWrapper">
             <canvas id="myChart"></canvas>
         </div>
+        
+        <div id="summaryWrapper"></div>
     </div>
 
     <script>
-        const csvFileName = "data.csv"; 
-        
+        // 🚀 在這裡貼上你的 GitHub raw CSV 網址
+        const githubCsvUrl = "https://raw.githubusercontent.com/dragon8201241-alt/Langscatter/refs/heads/main/data.csv"; 
+
         let myChartInstance = null; 
         let allParsedData = [];     
         const allCategories = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
-        
-        // 紀錄目前所在的頁籤 (預設為 1)
         let currentTab = 1;
+        let globalMetrics = { median_days_A: 0, median_k_B: 0 };
 
-        Papa.parse(csvFileName, {
-            download: true,
-            header: true,
-            complete: function(results) {
-                // 隱藏載入中文字，顯示分頁與篩選器
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('tabNav').style.display = 'flex';
-                document.getElementById('filterSection').style.display = 'block';
-                
-                results.data.forEach(row => {
-                    let category = null;
-                    let v1_y = null; // 第一頁的 Y (月均收益)
+        function getQuantile(arr, q) {
+            if (arr.length === 0) return 0;
+            let sorted = arr.slice().sort((a,b) => a - b);
+            let pos = (sorted.length - 1) * q;
+            let base = Math.floor(pos);
+            let rest = pos - base;
+            return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
+        }
+
+        function getPR(value, arr) {
+            if (arr.length === 0) return 0;
+            let validArr = arr.filter(v => !isNaN(v));
+            if (validArr.length === 0) return 0;
+            let count = validArr.filter(v => v < value).length;
+            return Math.round((count / validArr.length) * 100);
+        }
+
+        // 網頁載入時直接從 GitHub 讀取資料
+        window.onload = function() {
+            Papa.parse(githubCsvUrl, {
+                download: true, // 允許透過 URL 下載
+                header: true,
+                skipEmptyLines: true, 
+                complete: function(results) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('tabNav').style.display = 'flex';
+                    document.getElementById('filterSection').style.display = 'block';
                     
-                    // 尋找分類標籤並提取第一頁的 Y 軸資料
-                    for(let col of allCategories) {
-                        if(row[col] && row[col].trim() !== '') {
-                            category = col;
-                            v1_y = parseFloat(row[col].replace(/,/g, ''));
-                            break;
+                    let k_arr = [], l_arr = [], days_arr = [];
+
+                    results.data.forEach(row => {
+                        let category = null;
+                        let v1_y = null; 
+                        for(let col of allCategories) {
+                            if(row[col] && row[col].trim() !== '') {
+                                category = col;
+                                v1_y = parseFloat(row[col].replace(/,/g, ''));
+                                break;
+                            }
                         }
-                    }
 
-                    // 第一頁的 X (1,2月均時)
-                    let v1_x = parseFloat(row['1,2月均時']);
+                        let v1_x = parseFloat(row['1,2月均時']);
+                        let rawX2 = row['時/天'] ? String(row['時/天']).replace(/,/g, '') : 'NaN';
+                        let rawY2 = row['收益/時'] ? String(row['收益/時']).replace(/,/g, '') : 'NaN';
+                        let v2_x = parseFloat(rawX2);
+                        let v2_y = parseFloat(rawY2);
 
-                    // 第二頁的 Y (收益/時，K列) 與 X (時/天，L列)
-                    // 加上 String().replace() 是為了避免千分位逗號導致解析錯誤
-                    let rawY2 = row['收益/時'] ? String(row['收益/時']).replace(/,/g, '') : 'NaN';
-                    let rawX2 = row['時/天'] ? String(row['時/天']).replace(/,/g, '') : 'NaN';
+                        let revStr = row['月均收益(校正)'] ? String(row['月均收益(校正)']).replace(/,/g, '') : String(v1_y);
+                        let rev = parseFloat(revStr); 
+                        let v3_y = v2_x; 
+                        let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; 
+                        let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 80);
+
+                        if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
+                            let item = {
+                                id: row['主播ID'], name: row['主播暱稱'], category: category,
+                                v1_x: v1_x, v1_y: v1_y, v2_x: v2_x, v2_y: v2_y,
+                                v3_x: v3_x, v3_y: v3_y, v3_r: v3_r, rev: rev,
+                                role4: 'Other' 
+                            };
+                            allParsedData.push(item);
+
+                            if(v2_y > 0) k_arr.push(v2_y);
+                            if(v3_y > 0) l_arr.push(v3_y);
+                            if(v3_x > 0) days_arr.push(v3_x);
+                        }
+                    });
+
+                    let k70 = getQuantile(k_arr, 0.7);
+                    let l50 = getQuantile(l_arr, 0.5);
+                    let days70 = getQuantile(days_arr, 0.7);
+                    let l70 = getQuantile(l_arr, 0.7);
+
+                    let cohortA = allParsedData.filter(d => d.v2_y >= k70 && d.v3_y >= l50 && d.v3_x > 0);
+                    globalMetrics.median_days_A = getQuantile(cohortA.map(d => d.v3_x), 0.5);
+                    let typeA_ids = cohortA.filter(d => d.v3_x < globalMetrics.median_days_A).map(d => {
+                        d.growth = (d.v2_y * d.v3_y * globalMetrics.median_days_A) - d.rev; return d;
+                    }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
+
+                    let cohortB = allParsedData.filter(d => d.v3_x >= days70 && d.v3_y >= l70 && d.v2_y > 0);
+                    globalMetrics.median_k_B = getQuantile(cohortB.map(d => d.v2_y), 0.5);
+                    let typeB_ids = cohortB.filter(d => d.v2_y < globalMetrics.median_k_B).map(d => {
+                        d.growth = (globalMetrics.median_k_B * d.v1_x) - d.rev; return d;
+                    }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
+
+                    allParsedData.forEach(d => {
+                        if(typeA_ids.includes(d.id)) d.role4 = 'TypeA';
+                        else if(cohortA.find(c=>c.id===d.id)) d.role4 = 'PeerA';
+                        else if(typeB_ids.includes(d.id)) d.role4 = 'TypeB';
+                        else if(cohortB.find(c=>c.id===d.id)) d.role4 = 'PeerB';
+                    });
+
+                    document.getElementById('checkboxContainer').innerHTML = '';
+                    createCheckboxes();
                     
-                    let v2_y = parseFloat(rawY2);
-                    let v2_x = parseFloat(rawX2);
+                    switchTab(currentTab);
+                },
+                error: function(err) {
+                    document.getElementById('loading').innerHTML = "❌ GitHub 檔案讀取失敗，請確認網址正確或儲存庫為公開狀態。";
+                }
+            });
+        };
 
-                    if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
-                        allParsedData.push({
-                            id: row['主播ID'],
-                            name: row['主播暱稱'],
-                            category: category,
-                            v1_x: v1_x,
-                            v1_y: v1_y,
-                            v2_x: v2_x,
-                            v2_y: v2_y
-                        });
-                    }
-                });
-
-                createCheckboxes();
-                updateChart();
-            },
-            error: function(err) {
-                document.getElementById('loading').innerHTML = "❌ 無法讀取資料檔案。<br><br>請確認是否已上傳至 GitHub，並將檔名命名為 <b>data.csv</b>。";
-                console.error(err);
-            }
-        });
-
-        // 產生核取方塊的函數
         function createCheckboxes() {
             const container = document.getElementById('checkboxContainer');
             allCategories.forEach(cat => {
                 const label = document.createElement('label');
                 label.className = 'checkbox-label';
-                
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
                 checkbox.value = cat;
                 checkbox.checked = true; 
-                
                 checkbox.addEventListener('change', updateChart);
-                
                 label.appendChild(checkbox);
                 label.appendChild(document.createTextNode(cat));
                 container.appendChild(label);
             });
         }
 
-        // 切換分頁的函數
         function switchTab(tabId) {
             currentTab = tabId;
-            // 更新按鈕的視覺外觀
             const buttons = document.querySelectorAll('.tab-btn');
             buttons.forEach((btn, index) => {
                 btn.className = (index + 1 === tabId) ? 'tab-btn active' : 'tab-btn';
             });
-            // 重新畫圖
+
+            if (tabId === 5) {
+                document.getElementById('chartWrapper').style.display = 'none';
+                document.getElementById('summaryWrapper').style.display = 'block';
+            } else {
+                document.getElementById('chartWrapper').style.display = 'block';
+                document.getElementById('summaryWrapper').style.display = 'none';
+            }
             updateChart();
         }
 
-        // 畫圖的核心函數
+        function clearSearch() {
+            document.getElementById('idSearchInput').value = '';
+            updateChart();
+        }
+
         function updateChart() {
+            if(allParsedData.length === 0) return;
+
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
+            
+            const rawSearchInput = document.getElementById('idSearchInput').value.trim();
+            const searchIds = rawSearchInput.split(/[,，\s]+/).filter(id => id !== '');
 
-            const datasetsConfig = [
-                { label: '高收高時', backgroundColor: 'Cyan', data: [] },
-                { label: '高收低時', backgroundColor: 'Green', data: [] },
-                { label: '低收高時', backgroundColor: 'Orange', data: [] },
-                { label: '低收低時', backgroundColor: 'Red', data: [] },
-                { label: '導師', backgroundColor: 'Blue', data: [] }
-            ];
+            if (currentTab === 5) {
+                const summaryDiv = document.getElementById('summaryWrapper');
+                
+                if (searchIds.length === 0) {
+                    summaryDiv.innerHTML = '<div style="text-align:center; padding:60px; color:#777; font-size:18px;">🔍 請在上方搜尋框輸入 ID（可多筆），以產生個人摘要報表！</div>';
+                    return; 
+                }
 
-            const categoryIndexMap = {
-                '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4
-            };
+                let htmlContent = '';
+                
+                searchIds.forEach(id => {
+                    const user = allParsedData.find(d => String(d.id) === id);
+                    if (!user) {
+                        htmlContent += `<div class="summary-card" style="border-left-color: #9e9e9e; color: #d32f2f;">❌ 找不到 ID: <strong>${id}</strong> 的資料，請確認輸入正確。</div>`;
+                        return;
+                    }
 
-            // 根據目前所在的分頁，把不同的 X, Y 資料塞進圖表
-            allParsedData.forEach(item => {
-                if (activeCategories.includes(item.category)) {
-                    const idx = categoryIndexMap[item.category];
-                    if (idx !== undefined) {
-                        if (currentTab === 1) {
-                            datasetsConfig[idx].data.push({ x: item.v1_x, y: item.v1_y, id: item.id, name: item.name });
-                        } else if (currentTab === 2) {
-                            // 確保第二頁的資料是有效的數字才加入
-                            if (!isNaN(item.v2_x) && !isNaN(item.v2_y)) {
-                                datasetsConfig[idx].data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
+                    const groupData = allParsedData.filter(d => d.category === user.category);
+                    
+                    // ==========================================
+                    // 🚀 新增：計算同組與整體的 PR 值
+                    // ==========================================
+                    // 同組 PR
+                    const revPR = getPR(user.rev, groupData.map(d => d.rev));
+                    const hrsPR = getPR(user.v1_x, groupData.map(d => d.v1_x));
+                    // 整體 PR (全體資料)
+                    const overallRevPR = getPR(user.rev, allParsedData.map(d => d.rev));
+                    const overallHrsPR = getPR(user.v1_x, allParsedData.map(d => d.v1_x));
+
+                    // 其他策略運算所需指標
+                    const effPR = getPR(user.v2_y, groupData.map(d => d.v2_y));   // 時薪 PR
+                    const daysPR = getPR(user.v3_x, groupData.map(d => d.v3_x));  // 頻率(天數) PR
+                    const lenPR = getPR(user.v3_y, groupData.map(d => d.v3_y));   // 單次時長 PR
+
+                    let strategyText = "";
+                    let roleIcon = "💡";
+
+                    if (user.rev >= 600000) {
+                        strategyText = `太棒了！你的月收益已成功突破 60 萬鑽基準線。請繼續保持目前的優勢節奏，並嘗試帶動粉絲活躍度，穩固基本盤邁向更高的里程碑！`;
+                        roleIcon = "🏆";
+                    } else {
+                        let strengths = [];
+                        if (effPR > 50) strengths.push("時薪(變現力)");
+                        if (daysPR > 50) strengths.push("開播天數");
+                        if (lenPR > 50) strengths.push("單次續航力");
+                        if (hrsPR > 50 && !strengths.includes("開播天數")) strengths.push("總開播毅力");
+
+                        if (strengths.length > 0) {
+                            strategyText = `距離 60 萬鑽目標還有成長空間，但你的 **${strengths.join("、")}** 表現已優於同組多數人(PR>50)。\n<br><br>`;
+                            
+                            if (effPR > 50) {
+                                strategyText += `👉 **突破破局點：** 你的變現效率極佳！最接近達標的作法是「放大優勢規模」，建議在不影響品質的前提下，適度增加每月的開播天數，總收益將能顯著暴增！`;
+                                roleIcon = "🌟";
+                            } else if (daysPR > 50 || hrsPR > 50) {
+                                strategyText += `👉 **突破破局點：** 你的開播毅力驚人！目前的關鍵在於「提升單小時變現力」。建議先維持現有時數，將重心轉移至企劃優化、增加互動環節，提高單次開播的含金量。`;
+                                roleIcon = "🔥";
+                            } else if (lenPR > 50) {
+                                strategyText += `👉 **突破破局點：** 你的單次續航力很好！建議可以試著增加每週的開播頻率，讓粉絲更容易養成固定觀看習慣，藉此帶動整體時薪與總收益。`;
+                                roleIcon = "🎯";
                             }
+                        } else {
+                            strategyText = `目前各項指標與 60 萬鑽目標相比仍在蓄力階段。建議先從「穩定每週固定開播天數」做起，培養基礎粉絲群，再逐步拉長時間與優化互動內容，一步步穩紮穩打！`;
+                            roleIcon = "🌱";
                         }
                     }
-                }
-            });
 
-            const finalDatasets = datasetsConfig.filter(ds => activeCategories.includes(ds.label));
+                    htmlContent += `
+                    <div class="summary-card">
+                        <h3 style="margin-top:0; margin-bottom:15px; color:#333; font-size:20px;">
+                            ${roleIcon} ${user.name} 
+                            <span style="font-size:14px; color:#888; font-weight:normal;">(ID: ${user.id}) | 🏷️ 分組：${user.category}</span>
+                        </h3>
+                        
+                        <div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom: 20px;">
+                            <div style="background:#fef5f5; border: 1px solid #fbdada; padding:12px; border-radius:8px; flex:1; min-width:200px;">
+                                <div style="font-size:13px; color:#666; margin-bottom:5px;">💰 月均收益表現</div>
+                                <div style="font-size:16px; font-weight:bold; color:#333;">${user.rev.toLocaleString()} 鑽</div>
+                                <div style="font-size:14px; color:#d32f2f; margin-top:8px;">
+                                    📊 同組 PR： <strong>${revPR}</strong> &nbsp;|&nbsp; 🌍 整體 PR： <strong>${overallRevPR}</strong>
+                                </div>
+                            </div>
+                            <div style="background:#f0f8ff; border: 1px solid #d6eaf8; padding:12px; border-radius:8px; flex:1; min-width:200px;">
+                                <div style="font-size:13px; color:#666; margin-bottom:5px;">⏱️ 平均開播時數</div>
+                                <div style="font-size:16px; font-weight:bold; color:#333;">${user.v1_x.toFixed(1)} 小時</div>
+                                <div style="font-size:14px; color:#0066cc; margin-top:8px;">
+                                    📊 同組 PR： <strong>${hrsPR}</strong> &nbsp;|&nbsp; 🌍 整體 PR： <strong>${overallHrsPR}</strong>
+                                </div>
+                            </div>
+                        </div>
 
-            if (myChartInstance) {
-                myChartInstance.destroy();
+                        <div style="background:#fffde7; border-left: 4px solid #fbc02d; padding:15px; border-radius:4px;">
+                            <strong style="color:#555;">💡 60萬鑽達標策略建議：</strong>
+                            <p style="margin:8px 0 0 0; color:#444; font-size:15px; line-height:1.6;">${strategyText}</p>
+                        </div>
+                    </div>
+                    `;
+                });
+                
+                summaryDiv.innerHTML = htmlContent;
+                return; 
             }
 
-            // 根據目前所在的分頁，設定不同的標題文字與提示框
-            let xTitle = currentTab === 1 ? '1,2月均時 (小時)' : '時 / 天 (每天平均開播時數)';
-            let yTitle = currentTab === 1 ? '月均收益 (鑽)' : '收益 / 時 (每小時產能)';
+            let finalDatasets = [];
+
+            if (currentTab === 4) {
+                const ds4 = [
+                    { label: '🌟 佛系潛力股 (缺天數)', backgroundColor: 'rgba(211, 47, 47, 0.9)', borderColor: '#b71c1c', borderWidth: 2, data: [] },
+                    { label: '🎯 佛系群同儕 (已達標)', backgroundColor: 'rgba(211, 47, 47, 0.2)', borderColor: 'rgba(211, 47, 47, 0.5)', borderWidth: 1, data: [] },
+                    { label: '🌱 鐵人潛力股 (缺時薪)', backgroundColor: 'rgba(25, 118, 210, 0.9)', borderColor: '#0d47a1', borderWidth: 2, data: [] },
+                    { label: '🎯 鐵人群同儕 (已達標)', backgroundColor: 'rgba(25, 118, 210, 0.2)', borderColor: 'rgba(25, 118, 210, 0.5)', borderWidth: 1, data: [] }
+                ];
+
+                const targetDataset4 = {
+                    label: '🔍 搜尋目標', backgroundColor: 'rgba(255, 215, 0, 0.9)', borderColor: '#000000', borderWidth: 2, data: []
+                };
+
+                allParsedData.forEach(item => {
+                    let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
+                    
+                    if (isTarget) {
+                        targetDataset4.data.push({ x: item.v3_x, y: item.v2_y, r: Math.max(8, item.v3_y * 4), sourceL: item.v3_y, id: item.id, name: item.name });
+                    }
+
+                    if (activeCategories.includes(item.category)) {
+                        let bubbleData = { x: item.v3_x, y: item.v2_y, r: Math.max(4, item.v3_y * 3), sourceL: item.v3_y, id: item.id, name: item.name };
+                        if(item.role4 === 'TypeA') ds4[0].data.push(bubbleData);
+                        else if(item.role4 === 'PeerA') ds4[1].data.push(bubbleData);
+                        else if(item.role4 === 'TypeB') ds4[2].data.push(bubbleData);
+                        else if(item.role4 === 'PeerB') ds4[3].data.push(bubbleData);
+                    }
+                });
+
+                if (targetDataset4.data.length > 0) ds4.push(targetDataset4);
+                finalDatasets = ds4;
+
+            } else {
+                const datasetsConfig = [
+                    { label: '高收高時', backgroundColor: 'rgba(0, 255, 255, 0.5)', borderColor: 'rgba(0, 206, 209, 0.9)', borderWidth: 1, data: [] },
+                    { label: '高收低時', backgroundColor: 'rgba(0, 128, 0, 0.5)', borderColor: 'rgba(0, 100, 0, 0.9)', borderWidth: 1, data: [] },
+                    { label: '低收高時', backgroundColor: 'rgba(255, 165, 0, 0.5)', borderColor: 'rgba(255, 140, 0, 0.9)', borderWidth: 1, data: [] },
+                    { label: '低收低時', backgroundColor: 'rgba(255, 0, 0, 0.5)', borderColor: 'rgba(139, 0, 0, 0.9)', borderWidth: 1, data: [] },
+                    { label: '導師', backgroundColor: 'rgba(0, 0, 255, 0.5)', borderColor: 'rgba(0, 0, 139, 0.9)', borderWidth: 1, data: [] }
+                ];
+                const categoryIndexMap = { '高收高時': 0, '高收低時': 1, '低收高時': 2, '低收低時': 3, '導師': 4 };
+
+                const targetDataset = {
+                    label: '🔍 搜尋目標', 
+                    backgroundColor: 'rgba(255, 215, 0, 0.9)', 
+                    borderColor: '#000000', 
+                    borderWidth: 2, 
+                    pointRadius: currentTab === 3 ? undefined : 8,
+                    pointHoverRadius: currentTab === 3 ? undefined : 12,
+                    data: []
+                };
+
+                allParsedData.forEach(item => {
+                    let isTarget = searchIds.length > 0 && searchIds.includes(String(item.id));
+
+                    if (isTarget) {
+                        if (currentTab === 1) targetDataset.data.push({ x: item.v1_x, y: item.v1_y, id: item.id, name: item.name });
+                        else if (currentTab === 2 && !isNaN(item.v2_x) && !isNaN(item.v2_y)) targetDataset.data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
+                        else if (currentTab === 3 && item.v3_x > 0 && item.v3_y > 0) targetDataset.data.push({ x: item.v3_x, y: item.v3_y, r: item.v3_r * 1.5, rev: item.rev, id: item.id, name: item.name });
+                    }
+
+                    if (activeCategories.includes(item.category)) {
+                        const idx = categoryIndexMap[item.category];
+                        if (idx !== undefined) {
+                            if (currentTab === 1) datasetsConfig[idx].data.push({ x: item.v1_x, y: item.v1_y, id: item.id, name: item.name });
+                            else if (currentTab === 2 && !isNaN(item.v2_x) && !isNaN(item.v2_y)) datasetsConfig[idx].data.push({ x: item.v2_x, y: item.v2_y, id: item.id, name: item.name });
+                            else if (currentTab === 3 && item.v3_x > 0 && item.v3_y > 0) datasetsConfig[idx].data.push({ x: item.v3_x, y: item.v3_y, r: item.v3_r, rev: item.rev, id: item.id, name: item.name });
+                        }
+                    }
+                });
+
+                finalDatasets = datasetsConfig.filter(ds => activeCategories.includes(ds.label));
+                if (targetDataset.data.length > 0) finalDatasets.push(targetDataset);
+            }
+
+            if (myChartInstance) myChartInstance.destroy();
+
+            const chartType = (currentTab === 3 || currentTab === 4) ? 'bubble' : 'scatter';
+
+            let xTitle = currentTab === 1 ? '1,2月均時 (小時)' : currentTab === 2 ? '時 / 天 (每天平均開播時長)' : '每月開播天數 (天/月)';
+            let yTitle = currentTab === 1 ? '月均收益 (鑽)' : currentTab === 2 ? '收益 / 時 (每小時產能)' : currentTab === 3 ? '時 / 天 (每次開播時長)' : '收益 / 時 (K)';
             
-            // 根據目前分頁，設定十字基準線 (只有第一頁有)
+            let xScaleType = currentTab === 3 ? 'logarithmic' : 'linear';
+            let yScaleType = currentTab === 3 ? 'linear' : 'logarithmic'; 
+            let yMaxSetting = currentTab === 3 ? 12 : undefined;
+
             let currentAnnotations = {};
             if (currentTab === 1) {
                 currentAnnotations = {
                     hLine: { type: 'line', yMin: 600000, yMax: 600000, borderColor: 'rgba(255, 0, 0, 0.7)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: '收益 60 萬', position: 'end' } },
                     vLine: { type: 'line', xMin: 40, xMax: 40, borderColor: 'rgba(0, 0, 255, 0.7)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: '均時 40', position: 'start' } }
                 };
+            } else if (currentTab === 4) {
+                currentAnnotations = {
+                    hLine: { type: 'line', yMin: globalMetrics.median_k_B, yMax: globalMetrics.median_k_B, borderColor: 'rgba(25, 118, 210, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `鐵人時薪達標線 (${Math.round(globalMetrics.median_k_B)})`, position: 'start', backgroundColor: 'rgba(25, 118, 210, 0.8)' } },
+                    vLine: { type: 'line', xMin: globalMetrics.median_days_A, xMax: globalMetrics.median_days_A, borderColor: 'rgba(211, 47, 47, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `佛系天數達標線 (${Math.round(globalMetrics.median_days_A)}天)`, position: 'start', backgroundColor: 'rgba(211, 47, 47, 0.8)' } }
+                };
             }
 
             const ctx = document.getElementById('myChart').getContext('2d');
             myChartInstance = new Chart(ctx, {
-                type: 'scatter',
+                type: chartType,
                 data: { datasets: finalDatasets },
                 options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
+                    responsive: true, maintainAspectRatio: false,
                     plugins: {
                         legend: { position: 'top', labels: { font: { size: 14 } } },
                         tooltip: {
-                            backgroundColor: 'rgba(0,0,0,0.8)',
-                            titleFont: { size: 16 },
-                            bodyFont: { size: 14 },
+                            backgroundColor: 'rgba(0,0,0,0.8)', titleFont: { size: 16 }, bodyFont: { size: 14 },
                             callbacks: {
                                 label: function(context) {
                                     const pt = context.raw;
-                                    if (currentTab === 1) {
-                                        return `${pt.name} (ID: ${pt.id}) | 均時: ${pt.x} 小時 | 收益: ${pt.y.toLocaleString()} 鑽`;
-                                    } else {
-                                        return `${pt.name} (ID: ${pt.id}) | 努力度(時/天): ${pt.x} | 變現力(收益/時): ${pt.y.toLocaleString()}`;
-                                    }
+                                    if (currentTab === 1) return `${pt.name} (ID: ${pt.id}) | 均時: ${pt.x.toFixed(1)}h | 收益: ${pt.y.toLocaleString()} 鑽`;
+                                    if (currentTab === 2) return `${pt.name} (ID: ${pt.id}) | 時/天: ${pt.x.toFixed(1)}h | 收益/時: ${pt.y.toLocaleString()}`;
+                                    if (currentTab === 3) return `${pt.name} (ID: ${pt.id}) | 頻率: ${pt.x.toFixed(1)}天/月 | 每次: ${pt.y.toFixed(1)}小時 | 月收益: ${pt.rev.toLocaleString()} 鑽`;
+                                    if (currentTab === 4) return `${pt.name} (ID: ${pt.id}) | 頻率(Days): ${pt.x.toFixed(1)}天 | 效率(K): ${pt.y.toLocaleString()} 鑽/時 | 每次時長(L): ${pt.sourceL.toFixed(1)}h`;
                                 }
                             }
                         },
-                        annotation: {
-                            annotations: currentAnnotations
-                        }
+                        annotation: { annotations: currentAnnotations }
                     },
                     scales: {
-                        x: { title: { display: true, text: xTitle, font: { size: 14, weight: 'bold' } } },
-                        y: { title: { display: true, text: yTitle, font: { size: 14, weight: 'bold' } } }
+                        x: { type: xScaleType, title: { display: true, text: xTitle, font: { size: 14, weight: 'bold' } } },
+                        y: { type: yScaleType, max: yMaxSetting, title: { display: true, text: yTitle, font: { size: 14, weight: 'bold' } } }
                     }
                 }
             });
