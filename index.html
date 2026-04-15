@@ -7,6 +7,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body { font-family: "Microsoft JhengHei", sans-serif; text-align: center; background-color: #f4f7f6; margin: 0; padding: 20px; }
         .dashboard-container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
@@ -26,7 +27,8 @@
         .chart-wrapper { width: 100%; height: 65vh; position: relative; display: none; }
         
         #summaryWrapper { display: none; text-align: left; height: 65vh; overflow-y: auto; padding: 10px; background: #fdfdfd; border-radius: 8px; }
-        .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; border: 1px solid #eee; }
+        /* 🚀 增加 cursor: pointer 讓使用者知道可以互動 */
+        .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; border: 1px solid #eee; cursor: pointer; }
         .summary-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
     </style>
 </head>
@@ -66,7 +68,6 @@
     </div>
 
     <script>
-        // 🚀 在這裡貼上你的 GitHub raw CSV 網址
         const githubCsvUrl = "https://raw.githubusercontent.com/dragon8201241-alt/Langscatter/refs/heads/main/data.csv"; 
 
         let myChartInstance = null; 
@@ -215,6 +216,41 @@
             updateChart();
         }
 
+        // 🚀 新增：右鍵截圖並下載功能
+        function captureAndDownload(event, element, id) {
+            // 阻止原本的右鍵選單出現
+            event.preventDefault();
+
+            // 稍微改變透明度，給予使用者正在截圖的視覺回饋
+            element.style.opacity = '0.7';
+
+            // 使用 html2canvas 將該 div 轉換為 Canvas
+            html2canvas(element, {
+                scale: 2, // 提高解析度讓圖片更清晰
+                backgroundColor: "#ffffff", // 確保背景是乾淨的白色
+            }).then(canvas => {
+                // 恢復透明度
+                element.style.opacity = '1';
+
+                // 將 Canvas 轉換為圖片資料 URL
+                let imgData = canvas.toDataURL("image/png");
+
+                // 建立隱藏的 a 標籤來觸發下載
+                let downloadLink = document.createElement('a');
+                downloadLink.href = imgData;
+                downloadLink.download = `個人報表_${id}.png`; // Windows 檔名不能有冒號，改用底線
+                
+                // 觸發下載
+                document.body.appendChild(downloadLink);
+                downloadLink.click();
+                document.body.removeChild(downloadLink);
+            }).catch(err => {
+                console.error("截圖失敗: ", err);
+                element.style.opacity = '1';
+                alert("截圖失敗，請稍後再試！");
+            });
+        }
+
         function updateChart() {
             if(allParsedData.length === 0) return;
 
@@ -252,9 +288,7 @@
                     const overallHrsPR = getPR(user.v1_x, allParsedData.map(d => d.v1_x));
                     const overallEffPR = getPR(user.v2_y, allParsedData.map(d => d.v2_y));
 
-                    // ==========================================
-                    // 🚀 新增：紅綠藍三色動態框邏輯
-                    // ==========================================
+                    // 紅綠藍三色動態框邏輯
                     const baseBoxStyle = "padding:12px; border-radius:8px; flex:1; min-width:200px;";
                     const greenStyle = "background:#f1f8e9; border: 1px solid #c8e6c9; " + baseBoxStyle;
                     const blueStyle  = "background:#e3f2fd; border: 1px solid #bbdefb; " + baseBoxStyle;
@@ -290,12 +324,11 @@
                         effBoxStyle = redStyle; effTextColor = '#c62828';
                     }
 
-                    // 判斷哪些指標大於 PR 50，以利後續產出策略與卡片邊框
                     const isRevGood = (revPR > 50 || overallRevPR > 50);
                     const isHrsGood = (hrsPR > 50 || overallHrsPR > 50);
                     const isEffGood = (effPR > 50 || overallEffPR > 50);
 
-                    // 🚀 50字內精準策略建議
+                    // 50字內精準策略建議
                     let strategy = "";
                     if (isRevGood && isHrsGood && isEffGood) {
                         strategy = "三項指標皆優！請保持高質量互動與開播頻率，穩固基本盤，挑戰更高營收。";
@@ -315,8 +348,9 @@
                         strategy = "各項指標尚在蓄力。建議先固定每週開播天數，培養粉絲群，再逐步優化內容！";
                     }
 
+                    // 🚀 將右鍵截圖事件綁定在此 div 上
                     htmlContent += `
-                    <div class="summary-card">
+                    <div class="summary-card" title="💡 在此處點擊滑鼠【右鍵】，即可下載該主播個人報表！" oncontextmenu="captureAndDownload(event, this, '${user.id}')">
                         <h3 style="margin:0 0 15px 0;">🌟 ${user.name} <span style="font-size:14px; color:#888;">(ID: ${user.id}) | 分組：${user.category}</span></h3>
                         
                         <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
