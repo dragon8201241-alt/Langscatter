@@ -27,7 +27,6 @@
         .chart-wrapper { width: 100%; height: 65vh; position: relative; display: none; }
         
         #summaryWrapper { display: none; text-align: left; height: 65vh; overflow-y: auto; padding: 10px; background: #fdfdfd; border-radius: 8px; }
-        /* 🚀 增加 cursor: pointer 讓使用者知道可以互動 */
         .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; border: 1px solid #eee; cursor: pointer; }
         .summary-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
     </style>
@@ -74,7 +73,7 @@
         let allParsedData = [];     
         const allCategories = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
         let currentTab = 1;
-        let globalMetrics = { median_days_A: 0, median_k_B: 0 };
+        let globalMetrics = { median_days_A: 0, median_k_B: 0, median_v2_x: 0, median_v2_y: 0 };
 
         function getQuantile(arr, q) {
             if (arr.length === 0) return 0;
@@ -104,6 +103,7 @@
                     document.getElementById('filterSection').style.display = 'block';
                     
                     let k_arr = [], l_arr = [], days_arr = [];
+                    let overall_v2_x_arr = [], overall_v2_y_arr = []; // 為了計算第二頁的中位數
 
                     results.data.forEach(row => {
                         let category = null;
@@ -140,8 +140,16 @@
                             if(v2_y > 0) k_arr.push(v2_y);
                             if(v3_y > 0) l_arr.push(v3_y);
                             if(v3_x > 0) days_arr.push(v3_x);
+                            
+                            // 收集 V2 的所有 X 與 Y 供中位數計算
+                            if(!isNaN(v2_x) && v2_x > 0) overall_v2_x_arr.push(v2_x);
+                            if(!isNaN(v2_y) && v2_y > 0) overall_v2_y_arr.push(v2_y);
                         }
                     });
+
+                    // 🚀 記錄 Tab 2 的全體中位數
+                    globalMetrics.median_v2_x = getQuantile(overall_v2_x_arr, 0.5);
+                    globalMetrics.median_v2_y = getQuantile(overall_v2_y_arr, 0.5);
 
                     let k70 = getQuantile(k_arr, 0.7);
                     let l50 = getQuantile(l_arr, 0.5);
@@ -216,31 +224,19 @@
             updateChart();
         }
 
-        // 🚀 新增：右鍵截圖並下載功能
         function captureAndDownload(event, element, id) {
-            // 阻止原本的右鍵選單出現
             event.preventDefault();
-
-            // 稍微改變透明度，給予使用者正在截圖的視覺回饋
             element.style.opacity = '0.7';
 
-            // 使用 html2canvas 將該 div 轉換為 Canvas
             html2canvas(element, {
-                scale: 2, // 提高解析度讓圖片更清晰
-                backgroundColor: "#ffffff", // 確保背景是乾淨的白色
+                scale: 2, 
+                backgroundColor: "#ffffff",
             }).then(canvas => {
-                // 恢復透明度
                 element.style.opacity = '1';
-
-                // 將 Canvas 轉換為圖片資料 URL
                 let imgData = canvas.toDataURL("image/png");
-
-                // 建立隱藏的 a 標籤來觸發下載
                 let downloadLink = document.createElement('a');
                 downloadLink.href = imgData;
-                downloadLink.download = `個人報表_${id}.png`; // Windows 檔名不能有冒號，改用底線
-                
-                // 觸發下載
+                downloadLink.download = `個人報表_${id}.png`; 
                 document.body.appendChild(downloadLink);
                 downloadLink.click();
                 document.body.removeChild(downloadLink);
@@ -279,7 +275,6 @@
 
                     const groupData = allParsedData.filter(d => d.category === user.category);
                     
-                    // 運算 PR 值
                     const revPR = getPR(user.rev, groupData.map(d => d.rev));
                     const hrsPR = getPR(user.v1_x, groupData.map(d => d.v1_x));
                     const effPR = getPR(user.v2_y, groupData.map(d => d.v2_y)); 
@@ -288,13 +283,14 @@
                     const overallHrsPR = getPR(user.v1_x, allParsedData.map(d => d.v1_x));
                     const overallEffPR = getPR(user.v2_y, allParsedData.map(d => d.v2_y));
 
-                    // 紅綠藍三色動態框邏輯
                     const baseBoxStyle = "padding:12px; border-radius:8px; flex:1; min-width:200px;";
                     const greenStyle = "background:#f1f8e9; border: 1px solid #c8e6c9; " + baseBoxStyle;
                     const blueStyle  = "background:#e3f2fd; border: 1px solid #bbdefb; " + baseBoxStyle;
                     const redStyle   = "background:#fff5f5; border: 1px solid #ffcdd2; " + baseBoxStyle;
 
-                    // 1. 月均收益表現
+                    // 記錄燈號顏色供後續判斷策略
+                    let hrsColor, effColor;
+
                     let revBoxStyle, revTextColor;
                     if (user.rev >= 600000) {
                         revBoxStyle = greenStyle; revTextColor = '#2e7d32';
@@ -304,51 +300,72 @@
                         revBoxStyle = redStyle; revTextColor = '#c62828';
                     }
 
-                    // 2. 平均開播時數
                     let hrsBoxStyle, hrsTextColor;
                     if (user.v1_x >= 40) {
-                        hrsBoxStyle = greenStyle; hrsTextColor = '#2e7d32';
+                        hrsBoxStyle = greenStyle; hrsTextColor = '#2e7d32'; hrsColor = 'green';
                     } else if (hrsPR > 50) {
-                        hrsBoxStyle = blueStyle; hrsTextColor = '#1565c0';
+                        hrsBoxStyle = blueStyle; hrsTextColor = '#1565c0'; hrsColor = 'blue';
                     } else {
-                        hrsBoxStyle = redStyle; hrsTextColor = '#c62828';
+                        hrsBoxStyle = redStyle; hrsTextColor = '#c62828'; hrsColor = 'red';
                     }
 
-                    // 3. 變現效率
                     let effBoxStyle, effTextColor;
                     if (overallEffPR > 50) {
-                        effBoxStyle = greenStyle; effTextColor = '#2e7d32';
+                        effBoxStyle = greenStyle; effTextColor = '#2e7d32'; effColor = 'green';
                     } else if (effPR > 50) {
-                        effBoxStyle = blueStyle; effTextColor = '#1565c0';
+                        effBoxStyle = blueStyle; effTextColor = '#1565c0'; effColor = 'blue';
                     } else {
-                        effBoxStyle = redStyle; effTextColor = '#c62828';
+                        effBoxStyle = redStyle; effTextColor = '#c62828'; effColor = 'red';
                     }
 
-                    const isRevGood = (revPR > 50 || overallRevPR > 50);
-                    const isHrsGood = (hrsPR > 50 || overallHrsPR > 50);
-                    const isEffGood = (effPR > 50 || overallEffPR > 50);
-
-                    // 50字內精準策略建議
+                    // 🚀 50字(100字內)精準策略建議
                     let strategy = "";
-                    if (isRevGood && isHrsGood && isEffGood) {
-                        strategy = "三項指標皆優！請保持高質量互動與開播頻率，穩固基本盤，挑戰更高營收。";
-                    } else if (isEffGood && isHrsGood) {
-                        strategy = "時數與變現效率極佳！請繼續放大優勢，維持健康營運，穩定邁向達標。";
-                    } else if (isEffGood && isRevGood) {
-                        strategy = "收益與變現效率極佳！時薪高，建議微增開播時數，總收益將迅速突破。";
-                    } else if (isHrsGood && isRevGood) {
-                        strategy = "收益與時數具備優勢！毅力驚人，建議優化直播內容，提升單時變現產能。";
-                    } else if (isEffGood) {
-                        strategy = "變現效率極佳！單時產能高，建議增加每週開播排班天數，總量將大幅成長。";
-                    } else if (isHrsGood) {
-                        strategy = "開播時數充足，毅力驚人！建議觀摩人氣主播，調整互動玩法，拉高單時產能。";
-                    } else if (isRevGood) {
-                        strategy = "收益表現佳！建議同步檢視時數與變現效率，找出最佳開播節奏，穩健成長。";
+                    if (user.rev >= 600000) {
+                        // 針對已達 60 萬的王者，看其他兩項的成色給予 100 字內建議
+                        if (hrsColor === 'green' && effColor === 'green') {
+                            strategy = "完美表現！時數充足且產能極高，是全公司的標竿。建議維持現有高質量互動，可嘗試帶領新人或開創新企劃，進一步擴大影響力與粉絲黏著度！";
+                        } else if (hrsColor === 'green' && effColor === 'blue') {
+                            strategy = "收益已達標且開播夠努力！時數優於多數人，但整體產能還有提升空間。建議維持開播頻率，同時優化直播內容，專注提高單小時收益，讓努力變現最大化。";
+                        } else if (hrsColor === 'green' && effColor === 'red') {
+                            strategy = "靠著驚人的毅力成功達標！開播時數極高，但產能低於平均。強烈建議注意身心健康，適度休息，將重心轉向提升單次互動質量，用更少的時間賺取同等收益。";
+                        } else if (hrsColor === 'blue' && effColor === 'green') {
+                            strategy = "收益達標且變現力驚人！時數在組內算前段班，且產能已是全體優等生。建議保持高時薪優勢，若有餘力可微幅增加開播天數，總收益將能再創新高！";
+                        } else if (hrsColor === 'blue' && effColor === 'blue') {
+                            strategy = "穩紮穩打成功達標！時數與產能在組內表現亮眼。繼續保持這份穩定感，建議逐步觀摩頂尖主播的互動技巧，從組內優等生向全體標竿邁進。";
+                        } else if (hrsColor === 'blue' && effColor === 'red') {
+                            strategy = "收益順利達標，時數表現佳！但整體產能偏弱，建議檢視目前開播時段是否為流量高峰，調整互動策略，拉高單時變現效率，讓開播時間更具價值。";
+                        } else if (hrsColor === 'red' && effColor === 'green') {
+                            strategy = "絕對的效率王者！靠著極高的時薪輕鬆達標。建議在不影響品質的前提下，適度增加排班時數，將這份超高變現力極大化，突破收益天花板！";
+                        } else if (hrsColor === 'red' && effColor === 'blue') {
+                            strategy = "效率不錯的佛系達標者！時數低於平均但組內產能佳。若想挑戰更高目標，只需穩定增加每週開播天數即可；若滿意現狀，則請維持目前的互動品質。";
+                        } else {
+                            strategy = "收益奇蹟達標！儘管時數與產能指標未顯著突出，總收益表現卻很亮眼。可能是單次大秀或高黏著度鐵粉發力，建議深入分析本月高光時刻，將其複製為常態模式。";
+                        }
                     } else {
-                        strategy = "各項指標尚在蓄力。建議先固定每週開播天數，培養粉絲群，再逐步優化內容！";
+                        // 未達 60 萬的潛力股，原有邏輯
+                        const isRevGood = (revPR > 50 || overallRevPR > 50);
+                        const isHrsGood = (hrsPR > 50 || overallHrsPR > 50);
+                        const isEffGood = (effPR > 50 || overallEffPR > 50);
+
+                        if (isRevGood && isHrsGood && isEffGood) {
+                            strategy = "三項指標皆優！請保持高質量互動與開播頻率，穩固基本盤，挑戰更高營收。";
+                        } else if (isEffGood && isHrsGood) {
+                            strategy = "時數與變現效率極佳！請繼續放大優勢，維持健康營運，穩定邁向達標。";
+                        } else if (isEffGood && isRevGood) {
+                            strategy = "收益與變現效率極佳！時薪高，建議微增開播時數，總收益將迅速突破。";
+                        } else if (isHrsGood && isRevGood) {
+                            strategy = "收益與時數具備優勢！毅力驚人，建議優化直播內容，提升單時變現產能。";
+                        } else if (isEffGood) {
+                            strategy = "變現效率極佳！單時產能高，建議增加每週開播排班天數，總量將大幅成長。";
+                        } else if (isHrsGood) {
+                            strategy = "開播時數充足，毅力驚人！建議觀摩人氣主播，調整互動玩法，拉高單時產能。";
+                        } else if (isRevGood) {
+                            strategy = "收益表現佳！建議同步檢視時數與變現效率，找出最佳開播節奏，穩健成長。";
+                        } else {
+                            strategy = "各項指標尚在蓄力。建議先固定每週開播天數，培養粉絲群，再逐步優化內容！";
+                        }
                     }
 
-                    // 🚀 將右鍵截圖事件綁定在此 div 上
                     htmlContent += `
                     <div class="summary-card" title="💡 在此處點擊滑鼠【右鍵】，即可下載該主播個人報表！" oncontextmenu="captureAndDownload(event, this, '${user.id}')">
                         <h3 style="margin:0 0 15px 0;">🌟 ${user.name} <span style="font-size:14px; color:#888;">(ID: ${user.id}) | 分組：${user.category}</span></h3>
@@ -380,7 +397,7 @@
                         </div>
                         
                         <div style="background:#fffde7; padding:15px; border-radius:6px; border-left:4px solid #fbc02d; text-align:left;">
-                            <strong>🎯 達標建議：</strong><br>
+                            <strong>💡 建議：</strong><br>
                             <span style="font-size:15px; color:#444;">${strategy}</span>
                         </div>
                     </div>`;
@@ -482,6 +499,12 @@
                 currentAnnotations = {
                     hLine: { type: 'line', yMin: 600000, yMax: 600000, borderColor: 'rgba(255, 0, 0, 0.7)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: '收益 60 萬', position: 'end' } },
                     vLine: { type: 'line', xMin: 40, xMax: 40, borderColor: 'rgba(0, 0, 255, 0.7)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: '均時 40', position: 'start' } }
+                };
+            } else if (currentTab === 2) {
+                // 🚀 Tab 2 新增全體中位數輔助線
+                currentAnnotations = {
+                    hLine: { type: 'line', yMin: globalMetrics.median_v2_y, yMax: globalMetrics.median_v2_y, borderColor: 'rgba(25, 118, 210, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `產能中位數: ${Math.round(globalMetrics.median_v2_y)}`, position: 'end', backgroundColor: 'rgba(25, 118, 210, 0.8)' } },
+                    vLine: { type: 'line', xMin: globalMetrics.median_v2_x, xMax: globalMetrics.median_v2_x, borderColor: 'rgba(211, 47, 47, 0.6)', borderWidth: 2, borderDash: [5, 5], label: { display: true, content: `時長中位數: ${globalMetrics.median_v2_x.toFixed(1)}h`, position: 'start', backgroundColor: 'rgba(211, 47, 47, 0.8)' } }
                 };
             } else if (currentTab === 4) {
                 currentAnnotations = {
