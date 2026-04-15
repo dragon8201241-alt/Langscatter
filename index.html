@@ -12,6 +12,9 @@
         .dashboard-container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
         h2 { color: #333; margin-top: 0; margin-bottom: 20px; }
         
+        .upload-section { background: #e3f2fd; border: 2px dashed #90caf9; padding: 20px; border-radius: 8px; margin-bottom: 20px; display: inline-block; }
+        .upload-section input[type="file"] { font-size: 16px; cursor: pointer; }
+
         .tabs { display: flex; justify-content: center; margin-bottom: 20px; border-bottom: 2px solid #ddd; flex-wrap: wrap; }
         .tab-btn { padding: 10px 15px; margin: 0 3px; font-size: 14px; cursor: pointer; background: #eef2f5; border: none; border-radius: 8px 8px 0 0; color: #555; transition: 0.3s; }
         .tab-btn:hover { background: #dce4e8; }
@@ -22,10 +25,9 @@
         .checkbox-label { margin-right: 15px; cursor: pointer; font-size: 14px; display: inline-flex; align-items: center; }
         .checkbox-label input { margin-right: 5px; width: 16px; height: 16px; cursor: pointer; }
         
-        #loading { font-size: 18px; color: #0066cc; font-weight: bold; padding: 40px; }
-        .chart-wrapper { width: 100%; height: 65vh; position: relative; }
+        #loading { font-size: 18px; color: #0066cc; font-weight: bold; padding: 20px; display: none; }
+        .chart-wrapper { width: 100%; height: 65vh; position: relative; display: none; }
         
-        /* 🚀 新增摘要面板的樣式 */
         #summaryWrapper { display: none; text-align: left; height: 65vh; overflow-y: auto; padding: 10px; background: #fdfdfd; border-radius: 8px; }
         .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; }
         .summary-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
@@ -35,16 +37,21 @@
 
     <div class="dashboard-container">
         <h2>主播營運數據分析看板</h2>
+
+        <div class="upload-section" id="uploadContainer">
+            <strong>🛡️ 內部機密資料不落地：請在此上傳最新的 data.csv</strong><br><br>
+            <input type="file" id="csvFileInput" accept=".csv">
+        </div>
+        
+        <div id="loading">讀取與運算中，請稍候...</div>
         
         <div class="tabs" id="tabNav" style="display: none;">
-            <button class="tab-btn active" onclick="switchTab(1)">📊 總體表現</button>
+            <button class="tab-btn" onclick="switchTab(1)">📊 總體表現</button>
             <button class="tab-btn" onclick="switchTab(2)">⚡ 變現效率</button>
             <button class="tab-btn" onclick="switchTab(3)">🎯 策略對決</button>
             <button class="tab-btn" onclick="switchTab(4)" style="color:#d32f2f; font-weight:bold;">🚀 潛力股同儕分析</button>
             <button class="tab-btn" onclick="switchTab(5)" style="color:#00796b; font-weight:bold;">📝 個人摘要報表</button>
         </div>
-        
-        <div id="loading">讀取資料中，請稍候...</div>
 
         <div class="filter-section" id="filterSection">
             <div>
@@ -56,6 +63,7 @@
                 <strong>🔍 尋找主播：</strong>
                 <input type="text" id="idSearchInput" placeholder="輸入多個 ID (用空格或逗號隔開)..." oninput="updateChart()" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; width: 280px;">
                 <button onclick="clearSearch()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #e0e0e0; transition: 0.2s;">清除搜尋</button>
+                <button onclick="copyShareLink()" style="padding: 6px 12px; margin-left: 5px; cursor: pointer; border: none; border-radius: 4px; background: #fff3e0; color: #e65100; font-weight: bold; transition: 0.2s;">🔗 複製分享連結</button>
             </div>
         </div>
 
@@ -67,14 +75,24 @@
     </div>
 
     <script>
-        const csvFileName = "data.csv"; 
-        
         let myChartInstance = null; 
         let allParsedData = [];     
         const allCategories = ['高收高時', '高收低時', '低收高時', '低收低時', '導師'];
         let currentTab = 1;
-        
         let globalMetrics = { median_days_A: 0, median_k_B: 0 };
+
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const searchVal = urlParams.get('search');
+            const tabVal = urlParams.get('tab');
+
+            if (searchVal) {
+                document.getElementById('idSearchInput').value = decodeURIComponent(searchVal);
+            }
+            if (tabVal) {
+                currentTab = parseInt(tabVal); 
+            }
+        };
 
         function getQuantile(arr, q) {
             if (arr.length === 0) return 0;
@@ -85,92 +103,102 @@
             return sorted[base + 1] !== undefined ? sorted[base] + rest * (sorted[base + 1] - sorted[base]) : sorted[base];
         }
 
-        // 🚀 新增計算 PR 值的共用函數
         function getPR(value, arr) {
             if (arr.length === 0) return 0;
-            // 找出多少人的數值「小於」該值，換算成百分比
-            let count = arr.filter(v => v < value).length;
-            return Math.round((count / arr.length) * 100);
+            // 過濾掉無效數值 (NaN) 後計算
+            let validArr = arr.filter(v => !isNaN(v));
+            if (validArr.length === 0) return 0;
+            let count = validArr.filter(v => v < value).length;
+            return Math.round((count / validArr.length) * 100);
         }
 
-        Papa.parse(csvFileName, {
-            download: true,
-            header: true,
-            complete: function(results) {
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('tabNav').style.display = 'flex';
-                document.getElementById('filterSection').style.display = 'block';
-                
-                let k_arr = [], l_arr = [], days_arr = [];
+        document.getElementById('csvFileInput').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
 
-                results.data.forEach(row => {
-                    let category = null;
-                    let v1_y = null; 
-                    for(let col of allCategories) {
-                        if(row[col] && row[col].trim() !== '') {
-                            category = col;
-                            v1_y = parseFloat(row[col].replace(/,/g, ''));
-                            break;
+            document.getElementById('loading').style.display = 'block';
+            allParsedData = []; 
+            let k_arr = [], l_arr = [], days_arr = [];
+
+            Papa.parse(file, {
+                header: true,
+                skipEmptyLines: true, 
+                complete: function(results) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('tabNav').style.display = 'flex';
+                    document.getElementById('filterSection').style.display = 'block';
+                    
+                    results.data.forEach(row => {
+                        let category = null;
+                        let v1_y = null; 
+                        for(let col of allCategories) {
+                            if(row[col] && row[col].trim() !== '') {
+                                category = col;
+                                v1_y = parseFloat(row[col].replace(/,/g, ''));
+                                break;
+                            }
                         }
-                    }
 
-                    let v1_x = parseFloat(row['1,2月均時']);
-                    let rawX2 = row['時/天'] ? String(row['時/天']).replace(/,/g, '') : 'NaN';
-                    let rawY2 = row['收益/時'] ? String(row['收益/時']).replace(/,/g, '') : 'NaN';
-                    let v2_x = parseFloat(rawX2);
-                    let v2_y = parseFloat(rawY2);
+                        let v1_x = parseFloat(row['1,2月均時']);
+                        let rawX2 = row['時/天'] ? String(row['時/天']).replace(/,/g, '') : 'NaN';
+                        let rawY2 = row['收益/時'] ? String(row['收益/時']).replace(/,/g, '') : 'NaN';
+                        let v2_x = parseFloat(rawX2);
+                        let v2_y = parseFloat(rawY2);
 
-                    let revStr = row['月均收益(校正)'] ? String(row['月均收益(校正)']).replace(/,/g, '') : String(v1_y);
-                    let rev = parseFloat(revStr); 
-                    let v3_y = v2_x; 
-                    let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; 
-                    let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 80);
+                        let revStr = row['月均收益(校正)'] ? String(row['月均收益(校正)']).replace(/,/g, '') : String(v1_y);
+                        let rev = parseFloat(revStr); 
+                        let v3_y = v2_x; 
+                        let v3_x = (v3_y > 0) ? (v1_x / v3_y) : NaN; 
+                        let v3_r = isNaN(rev) ? 3 : Math.max(3, Math.sqrt(rev) / 80);
 
-                    if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
-                        let item = {
-                            id: row['主播ID'], name: row['主播暱稱'], category: category,
-                            v1_x: v1_x, v1_y: v1_y, v2_x: v2_x, v2_y: v2_y,
-                            v3_x: v3_x, v3_y: v3_y, v3_r: v3_r, rev: rev,
-                            role4: 'Other' 
-                        };
-                        allParsedData.push(item);
+                        if(category && !isNaN(v1_x) && !isNaN(v1_y)) {
+                            let item = {
+                                id: row['主播ID'], name: row['主播暱稱'], category: category,
+                                v1_x: v1_x, v1_y: v1_y, v2_x: v2_x, v2_y: v2_y,
+                                v3_x: v3_x, v3_y: v3_y, v3_r: v3_r, rev: rev,
+                                role4: 'Other' 
+                            };
+                            allParsedData.push(item);
 
-                        if(v2_y > 0) k_arr.push(v2_y);
-                        if(v3_y > 0) l_arr.push(v3_y);
-                        if(v3_x > 0) days_arr.push(v3_x);
-                    }
-                });
+                            if(v2_y > 0) k_arr.push(v2_y);
+                            if(v3_y > 0) l_arr.push(v3_y);
+                            if(v3_x > 0) days_arr.push(v3_x);
+                        }
+                    });
 
-                let k70 = getQuantile(k_arr, 0.7);
-                let l50 = getQuantile(l_arr, 0.5);
-                let days70 = getQuantile(days_arr, 0.7);
-                let l70 = getQuantile(l_arr, 0.7);
+                    let k70 = getQuantile(k_arr, 0.7);
+                    let l50 = getQuantile(l_arr, 0.5);
+                    let days70 = getQuantile(days_arr, 0.7);
+                    let l70 = getQuantile(l_arr, 0.7);
 
-                let cohortA = allParsedData.filter(d => d.v2_y >= k70 && d.v3_y >= l50 && d.v3_x > 0);
-                globalMetrics.median_days_A = getQuantile(cohortA.map(d => d.v3_x), 0.5);
-                let typeA_ids = cohortA.filter(d => d.v3_x < globalMetrics.median_days_A).map(d => {
-                    d.growth = (d.v2_y * d.v3_y * globalMetrics.median_days_A) - d.rev; return d;
-                }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
+                    let cohortA = allParsedData.filter(d => d.v2_y >= k70 && d.v3_y >= l50 && d.v3_x > 0);
+                    globalMetrics.median_days_A = getQuantile(cohortA.map(d => d.v3_x), 0.5);
+                    let typeA_ids = cohortA.filter(d => d.v3_x < globalMetrics.median_days_A).map(d => {
+                        d.growth = (d.v2_y * d.v3_y * globalMetrics.median_days_A) - d.rev; return d;
+                    }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
 
-                let cohortB = allParsedData.filter(d => d.v3_x >= days70 && d.v3_y >= l70 && d.v2_y > 0);
-                globalMetrics.median_k_B = getQuantile(cohortB.map(d => d.v2_y), 0.5);
-                let typeB_ids = cohortB.filter(d => d.v2_y < globalMetrics.median_k_B).map(d => {
-                    d.growth = (globalMetrics.median_k_B * d.v1_x) - d.rev; return d;
-                }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
+                    let cohortB = allParsedData.filter(d => d.v3_x >= days70 && d.v3_y >= l70 && d.v2_y > 0);
+                    globalMetrics.median_k_B = getQuantile(cohortB.map(d => d.v2_y), 0.5);
+                    let typeB_ids = cohortB.filter(d => d.v2_y < globalMetrics.median_k_B).map(d => {
+                        d.growth = (globalMetrics.median_k_B * d.v1_x) - d.rev; return d;
+                    }).sort((a,b)=>b.growth - a.growth).slice(0, 15).map(d=>d.id);
 
-                allParsedData.forEach(d => {
-                    if(typeA_ids.includes(d.id)) d.role4 = 'TypeA';
-                    else if(cohortA.find(c=>c.id===d.id)) d.role4 = 'PeerA';
-                    else if(typeB_ids.includes(d.id)) d.role4 = 'TypeB';
-                    else if(cohortB.find(c=>c.id===d.id)) d.role4 = 'PeerB';
-                });
+                    allParsedData.forEach(d => {
+                        if(typeA_ids.includes(d.id)) d.role4 = 'TypeA';
+                        else if(cohortA.find(c=>c.id===d.id)) d.role4 = 'PeerA';
+                        else if(typeB_ids.includes(d.id)) d.role4 = 'TypeB';
+                        else if(cohortB.find(c=>c.id===d.id)) d.role4 = 'PeerB';
+                    });
 
-                createCheckboxes();
-                updateChart();
-            },
-            error: function(err) {
-                document.getElementById('loading').innerHTML = "❌ 無法讀取資料，請確認 data.csv 是否存在。";
-            }
+                    document.getElementById('checkboxContainer').innerHTML = '';
+                    createCheckboxes();
+                    
+                    switchTab(currentTab);
+                },
+                error: function(err) {
+                    document.getElementById('loading').innerHTML = "❌ 檔案讀取失敗，請確認檔案格式正確。";
+                }
+            });
         });
 
         function createCheckboxes() {
@@ -189,7 +217,6 @@
             });
         }
 
-        // 🚀 修改切換 Tab 邏輯，處理第 5 頁的隱藏與顯示
         function switchTab(tabId) {
             currentTab = tabId;
             const buttons = document.querySelectorAll('.tab-btn');
@@ -209,19 +236,35 @@
 
         function clearSearch() {
             document.getElementById('idSearchInput').value = '';
+            window.history.pushState({}, document.title, window.location.pathname);
             updateChart();
         }
 
+        function copyShareLink() {
+            const searchInput = document.getElementById('idSearchInput').value.trim();
+            if (!searchInput) {
+                alert("請先在搜尋框輸入 ID 再分享喔！");
+                return;
+            }
+            const baseUrl = window.location.origin + window.location.pathname;
+            const shareUrl = `${baseUrl}?search=${encodeURIComponent(searchInput)}&tab=${currentTab}`;
+
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert("✅ 分享連結已複製！\n\n記得提醒同事：打開連結後，仍需要上傳 data.csv 才能看到最新報表喔！");
+            }).catch(err => {
+                alert("複製失敗，請手動複製以下網址：\n" + shareUrl);
+            });
+        }
+
         function updateChart() {
+            if(allParsedData.length === 0) return;
+
             const checkboxes = document.querySelectorAll('#checkboxContainer input[type="checkbox"]:checked');
             const activeCategories = Array.from(checkboxes).map(cb => cb.value);
             
             const rawSearchInput = document.getElementById('idSearchInput').value.trim();
             const searchIds = rawSearchInput.split(/[,，\s]+/).filter(id => id !== '');
 
-            // ==========================================
-            // 🚀 第五頁：個人摘要報表生成邏輯
-            // ==========================================
             if (currentTab === 5) {
                 const summaryDiv = document.getElementById('summaryWrapper');
                 
@@ -236,31 +279,51 @@
                     const user = allParsedData.find(d => String(d.id) === id);
                     if (!user) {
                         htmlContent += `<div class="summary-card" style="border-left-color: #9e9e9e; color: #d32f2f;">❌ 找不到 ID: <strong>${id}</strong> 的資料，請確認輸入正確。</div>`;
-                        return; // 繼續下一個 ID
+                        return;
                     }
 
-                    // 取出該主播「所屬分組」的所有資料來算 PR
                     const groupData = allParsedData.filter(d => d.category === user.category);
                     
+                    // ==========================================
+                    // 🚀 核心改動：計算所有指標的 PR 值並推導營運策略
+                    // ==========================================
                     const revPR = getPR(user.rev, groupData.map(d => d.rev));
                     const hrsPR = getPR(user.v1_x, groupData.map(d => d.v1_x));
+                    const effPR = getPR(user.v2_y, groupData.map(d => d.v2_y));   // 時薪 PR
+                    const daysPR = getPR(user.v3_x, groupData.map(d => d.v3_x));  // 頻率(天數) PR
+                    const lenPR = getPR(user.v3_y, groupData.map(d => d.v3_y));   // 單次時長 PR
 
-                    // 依據第 4 個 TAB 的潛力股角色給予 50 字內策略
-                    let strategyText = "目前處於蓄力期。建議穩定每週開播頻率與時長，培養固定觀眾群；並多觀摩優秀主播，逐步提升變現能力！";
-                    let roleIcon = "🌱";
-                    
-                    if (user.role4 === 'TypeA') {
-                        strategyText = "時薪極佳具備頂尖變現力！目前僅缺開播天數，建議維持直播品質，增加每月開播頻率，即可大幅突破總收益！";
-                        roleIcon = "🌟";
-                    } else if (user.role4 === 'PeerA') {
-                        strategyText = "表現優異且穩定！天數與產能皆達標，建議維持高質量節奏，可嘗試新企劃或粉絲互動，穩固鐵粉基底。";
-                        roleIcon = "🎯";
-                    } else if (user.role4 === 'TypeB') {
-                        strategyText = "開播毅力驚人！天數達標但單時收益偏低。建議優化直播內容，增強觀眾互動玩法，專注提升單小時變現效率！";
-                        roleIcon = "🔥";
-                    } else if (user.role4 === 'PeerB') {
-                        strategyText = "實力與努力兼具！時數與效率皆達高標，建議保持穩定輸出的同時，注意身心休息，確保持續健康的營運表現。";
+                    let strategyText = "";
+                    let roleIcon = "💡";
+
+                    if (user.rev >= 600000) {
+                        strategyText = `太棒了！你的月收益已成功突破 60 萬鑽基準線。請繼續保持目前的優勢節奏，並嘗試帶動粉絲活躍度，穩固基本盤邁向更高的里程碑！`;
                         roleIcon = "🏆";
+                    } else {
+                        // 蒐集 PR > 50 的強項指標
+                        let strengths = [];
+                        if (effPR > 50) strengths.push("時薪(變現力)");
+                        if (daysPR > 50) strengths.push("開播天數");
+                        if (lenPR > 50) strengths.push("單次續航力");
+                        if (hrsPR > 50 && !strengths.includes("開播天數")) strengths.push("總開播毅力");
+
+                        if (strengths.length > 0) {
+                            strategyText = `距離 60 萬鑽目標還有成長空間，但你的 **${strengths.join("、")}** 表現已優於同組多數人(PR>50)。\n<br><br>`;
+                            
+                            if (effPR > 50) {
+                                strategyText += `👉 **突破破局點：** 你的變現效率極佳！最接近達標的作法是「放大優勢規模」，建議在不影響品質的前提下，適度增加每月的開播天數，總收益將能顯著暴增！`;
+                                roleIcon = "🌟";
+                            } else if (daysPR > 50 || hrsPR > 50) {
+                                strategyText += `👉 **突破破局點：** 你的開播毅力驚人！目前的關鍵在於「提升單小時變現力」。建議先維持現有時數，將重心轉移至企劃優化、增加互動環節，提高單次開播的含金量。`;
+                                roleIcon = "🔥";
+                            } else if (lenPR > 50) {
+                                strategyText += `👉 **突破破局點：** 你的單次續航力很好！建議可以試著增加每週的開播頻率，讓粉絲更容易養成固定觀看習慣，藉此帶動整體時薪與總收益。`;
+                                roleIcon = "🎯";
+                            }
+                        } else {
+                            strategyText = `目前各項指標與 60 萬鑽目標相比仍在蓄力階段。建議先從「穩定每週固定開播天數」做起，培養基礎粉絲群，再逐步拉長時間與優化互動內容，一步步穩紮穩打！`;
+                            roleIcon = "🌱";
+                        }
                     }
 
                     htmlContent += `
@@ -284,20 +347,17 @@
                         </div>
 
                         <div style="background:#fffde7; border-left: 4px solid #fbc02d; padding:15px; border-radius:4px;">
-                            <strong style="color:#555;">💡 營運達標策略：</strong>
-                            <p style="margin:8px 0 0 0; color:#444; font-size:15px; line-height:1.5;">${strategyText}</p>
+                            <strong style="color:#555;">💡 60萬鑽達標策略建議：</strong>
+                            <p style="margin:8px 0 0 0; color:#444; font-size:15px; line-height:1.6;">${strategyText}</p>
                         </div>
                     </div>
                     `;
                 });
                 
                 summaryDiv.innerHTML = htmlContent;
-                return; // 🎯 若為第5頁，到此為止不跑後面的畫圖邏輯
+                return; 
             }
 
-            // ==========================================
-            // 以下為 1~4 頁原本的圖表渲染邏輯
-            // ==========================================
             let finalDatasets = [];
 
             if (currentTab === 4) {
