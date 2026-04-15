@@ -26,7 +26,7 @@
         .chart-wrapper { width: 100%; height: 65vh; position: relative; display: none; }
         
         #summaryWrapper { display: none; text-align: left; height: 65vh; overflow-y: auto; padding: 10px; background: #fdfdfd; border-radius: 8px; }
-        .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; }
+        .summary-card { background: white; border-left: 6px solid #0066cc; box-shadow: 0 3px 10px rgba(0,0,0,0.08); padding: 20px; margin-bottom: 20px; border-radius: 8px; transition: 0.3s; border: 1px solid #eee; }
         .summary-card:hover { box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
     </style>
 </head>
@@ -92,10 +92,9 @@
             return Math.round((count / validArr.length) * 100);
         }
 
-        // 網頁載入時直接從 GitHub 讀取資料
         window.onload = function() {
             Papa.parse(githubCsvUrl, {
-                download: true, // 允許透過 URL 下載
+                download: true,
                 header: true,
                 skipEmptyLines: true, 
                 complete: function(results) {
@@ -244,83 +243,87 @@
 
                     const groupData = allParsedData.filter(d => d.category === user.category);
                     
-                    // ==========================================
-                    // 🚀 新增：計算同組與整體的 PR 值
-                    // ==========================================
-                    // 同組 PR
+                    // 運算 PR 值
                     const revPR = getPR(user.rev, groupData.map(d => d.rev));
                     const hrsPR = getPR(user.v1_x, groupData.map(d => d.v1_x));
-                    // 整體 PR (全體資料)
+                    const effPR = getPR(user.v2_y, groupData.map(d => d.v2_y)); 
+
                     const overallRevPR = getPR(user.rev, allParsedData.map(d => d.rev));
                     const overallHrsPR = getPR(user.v1_x, allParsedData.map(d => d.v1_x));
+                    const overallEffPR = getPR(user.v2_y, allParsedData.map(d => d.v2_y));
 
-                    // 其他策略運算所需指標
-                    const effPR = getPR(user.v2_y, groupData.map(d => d.v2_y));   // 時薪 PR
-                    const daysPR = getPR(user.v3_x, groupData.map(d => d.v3_x));  // 頻率(天數) PR
-                    const lenPR = getPR(user.v3_y, groupData.map(d => d.v3_y));   // 單次時長 PR
+                    // 判斷哪些指標亮綠燈 (分組或全體其中之一 > 50 即可)
+                    const isRevGood = (revPR > 50 || overallRevPR > 50);
+                    const isHrsGood = (hrsPR > 50 || overallHrsPR > 50);
+                    const isEffGood = (effPR > 50 || overallEffPR > 50);
 
-                    let strategyText = "";
-                    let roleIcon = "💡";
+                    // 定義紅綠燈樣式
+                    const greenStyle = "background:#f1f8e9; border: 1px solid #c8e6c9; padding:12px; border-radius:8px; flex:1; min-width:200px;";
+                    const redStyle = "background:#fff5f5; border: 1px solid #ffcdd2; padding:12px; border-radius:8px; flex:1; min-width:200px;";
 
-                    if (user.rev >= 600000) {
-                        strategyText = `太棒了！你的月收益已成功突破 60 萬鑽基準線。請繼續保持目前的優勢節奏，並嘗試帶動粉絲活躍度，穩固基本盤邁向更高的里程碑！`;
-                        roleIcon = "🏆";
+                    const revBoxStyle = isRevGood ? greenStyle : redStyle;
+                    const hrsBoxStyle = isHrsGood ? greenStyle : redStyle;
+                    const effBoxStyle = isEffGood ? greenStyle : redStyle;
+
+                    const revTextColor = isRevGood ? '#2e7d32' : '#c62828';
+                    const hrsTextColor = isHrsGood ? '#2e7d32' : '#c62828';
+                    const effTextColor = isEffGood ? '#2e7d32' : '#c62828';
+
+                    // 🚀 50字內精準策略建議
+                    let strategy = "";
+                    if (isRevGood && isHrsGood && isEffGood) {
+                        strategy = "三項指標皆優！請保持高質量互動與開播頻率，穩固基本盤，挑戰更高營收。";
+                    } else if (isEffGood && isHrsGood) {
+                        strategy = "時數與變現效率極佳！請繼續放大優勢，維持健康營運，穩定邁向達標。";
+                    } else if (isEffGood && isRevGood) {
+                        strategy = "收益與變現效率極佳！時薪高，建議微增開播時數，總收益將迅速突破。";
+                    } else if (isHrsGood && isRevGood) {
+                        strategy = "收益與時數具備優勢！毅力驚人，建議優化直播內容，提升單時變現產能。";
+                    } else if (isEffGood) {
+                        strategy = "變現效率極佳！單時產能高，建議增加每週開播排班天數，總量將大幅成長。";
+                    } else if (isHrsGood) {
+                        strategy = "開播時數充足，毅力驚人！建議觀摩人氣主播，調整互動玩法，拉高單時產能。";
+                    } else if (isRevGood) {
+                        strategy = "收益表現佳！建議同步檢視時數與變現效率，找出最佳開播節奏，穩健成長。";
                     } else {
-                        let strengths = [];
-                        if (effPR > 50) strengths.push("時薪(變現力)");
-                        if (daysPR > 50) strengths.push("開播天數");
-                        if (lenPR > 50) strengths.push("單次續航力");
-                        if (hrsPR > 50 && !strengths.includes("開播天數")) strengths.push("總開播毅力");
-
-                        if (strengths.length > 0) {
-                            strategyText = `距離 60 萬鑽目標還有成長空間，但你的 **${strengths.join("、")}** 表現已優於同組多數人(PR>50)。\n<br><br>`;
-                            
-                            if (effPR > 50) {
-                                strategyText += `👉 **突破破局點：** 你的變現效率極佳！最接近達標的作法是「放大優勢規模」，建議在不影響品質的前提下，適度增加每月的開播天數，總收益將能顯著暴增！`;
-                                roleIcon = "🌟";
-                            } else if (daysPR > 50 || hrsPR > 50) {
-                                strategyText += `👉 **突破破局點：** 你的開播毅力驚人！目前的關鍵在於「提升單小時變現力」。建議先維持現有時數，將重心轉移至企劃優化、增加互動環節，提高單次開播的含金量。`;
-                                roleIcon = "🔥";
-                            } else if (lenPR > 50) {
-                                strategyText += `👉 **突破破局點：** 你的單次續航力很好！建議可以試著增加每週的開播頻率，讓粉絲更容易養成固定觀看習慣，藉此帶動整體時薪與總收益。`;
-                                roleIcon = "🎯";
-                            }
-                        } else {
-                            strategyText = `目前各項指標與 60 萬鑽目標相比仍在蓄力階段。建議先從「穩定每週固定開播天數」做起，培養基礎粉絲群，再逐步拉長時間與優化互動內容，一步步穩紮穩打！`;
-                            roleIcon = "🌱";
-                        }
+                        strategy = "各項指標尚在蓄力。建議先固定每週開播天數，培養粉絲群，再逐步優化內容！";
                     }
 
                     htmlContent += `
                     <div class="summary-card">
-                        <h3 style="margin-top:0; margin-bottom:15px; color:#333; font-size:20px;">
-                            ${roleIcon} ${user.name} 
-                            <span style="font-size:14px; color:#888; font-weight:normal;">(ID: ${user.id}) | 🏷️ 分組：${user.category}</span>
-                        </h3>
+                        <h3 style="margin:0 0 15px 0;">🌟 ${user.name} <span style="font-size:14px; color:#888;">(ID: ${user.id}) | 分組：${user.category}</span></h3>
                         
-                        <div style="display:flex; flex-wrap:wrap; gap:15px; margin-bottom: 20px;">
-                            <div style="background:#fef5f5; border: 1px solid #fbdada; padding:12px; border-radius:8px; flex:1; min-width:200px;">
-                                <div style="font-size:13px; color:#666; margin-bottom:5px;">💰 月均收益表現</div>
-                                <div style="font-size:16px; font-weight:bold; color:#333;">${user.rev.toLocaleString()} 鑽</div>
-                                <div style="font-size:14px; color:#d32f2f; margin-top:8px;">
-                                    📊 同組 PR： <strong>${revPR}</strong> &nbsp;|&nbsp; 🌍 整體 PR： <strong>${overallRevPR}</strong>
+                        <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                            <div style="${revBoxStyle}">
+                                <div style="font-size:12px; color:#666;">💰 月均收益表現</div>
+                                <div style="font-size:18px; font-weight:bold; color:#333;">${user.rev.toLocaleString()} 鑽</div>
+                                <div style="font-size:12px; color:${revTextColor}; margin-top:5px; font-weight:bold;">
+                                    分組PR: ${revPR} | 全體PR: ${overallRevPR}
                                 </div>
                             </div>
-                            <div style="background:#f0f8ff; border: 1px solid #d6eaf8; padding:12px; border-radius:8px; flex:1; min-width:200px;">
-                                <div style="font-size:13px; color:#666; margin-bottom:5px;">⏱️ 平均開播時數</div>
-                                <div style="font-size:16px; font-weight:bold; color:#333;">${user.v1_x.toFixed(1)} 小時</div>
-                                <div style="font-size:14px; color:#0066cc; margin-top:8px;">
-                                    📊 同組 PR： <strong>${hrsPR}</strong> &nbsp;|&nbsp; 🌍 整體 PR： <strong>${overallHrsPR}</strong>
+                            
+                            <div style="${hrsBoxStyle}">
+                                <div style="font-size:12px; color:#666;">⏱️ 平均開播時數</div>
+                                <div style="font-size:18px; font-weight:bold; color:#333;">${user.v1_x.toFixed(1)} h</div>
+                                <div style="font-size:12px; color:${hrsTextColor}; margin-top:5px; font-weight:bold;">
+                                    分組PR: ${hrsPR} | 全體PR: ${overallHrsPR}
+                                </div>
+                            </div>
+                            
+                            <div style="${effBoxStyle}">
+                                <div style="font-size:12px; color:#666;">⚡ 變現效率</div>
+                                <div style="font-size:18px; font-weight:bold; color:#333;">${user.v2_y.toLocaleString()} 鑽/時</div>
+                                <div style="font-size:12px; color:${effTextColor}; margin-top:5px; font-weight:bold;">
+                                    分組PR: ${effPR} | 全體PR: ${overallEffPR}
                                 </div>
                             </div>
                         </div>
-
-                        <div style="background:#fffde7; border-left: 4px solid #fbc02d; padding:15px; border-radius:4px;">
-                            <strong style="color:#555;">💡 60萬鑽達標策略建議：</strong>
-                            <p style="margin:8px 0 0 0; color:#444; font-size:15px; line-height:1.6;">${strategyText}</p>
+                        
+                        <div style="background:#fffde7; padding:15px; border-radius:6px; border-left:4px solid #fbc02d; text-align:left;">
+                            <strong>🎯 達標建議：</strong><br>
+                            <span style="font-size:15px; color:#444;">${strategy}</span>
                         </div>
-                    </div>
-                    `;
+                    </div>`;
                 });
                 
                 summaryDiv.innerHTML = htmlContent;
