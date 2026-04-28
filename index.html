@@ -613,193 +613,220 @@
             });
         }
         // 處理 Tab 6 多檔案上傳與分析
-let revenueChartInstances = [];
+// 處理 Tab 6 多檔案上傳與分析
+        let revenueChartInstances = [];
 
-function handleRevenueUpload(event) {
-    const files = event.target.files;
-    if (files.length === 0) return;
+        function handleRevenueUpload(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
 
-    const container = document.getElementById('revenueChartsContainer');
-    const crossDonorSection = document.getElementById('crossDonorSection');
-    const crossDonorContent = document.getElementById('crossDonorContent');
-    container.innerHTML = '<div style="color:#ff9800; font-weight:bold;">🚀 正在解析收益資料並繪製圖表...</div>';
-    
-    // 清除舊圖表
-    revenueChartInstances.forEach(c => c.destroy());
-    revenueChartInstances = [];
+            const container = document.getElementById('revenueChartsContainer');
+            const crossDonorSection = document.getElementById('crossDonorSection');
+            const crossDonorContent = document.getElementById('crossDonorContent');
+            container.innerHTML = '<div style="color:#ff9800; font-weight:bold;">🚀 正在解析收益資料並繪製圖表...</div>';
+            
+            // 清除舊圖表
+            revenueChartInstances.forEach(c => c.destroy());
+            revenueChartInstances = [];
 
-    let allDonors = []; // 收集所有捐款紀錄，用來找跨區大戶
-    let parsedFiles = 0;
-    let fileResults = [];
+            let allDonors = []; 
+            let parsedFiles = 0;
+            let fileResults = [];
 
-    Array.from(files).forEach(file => {
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: function(results) {
-                let data = results.data.filter(row => row.pfid && row.revenue);
-                
-                // 依照 revenue_per 排序 (由大到小)
-                data.sort((a, b) => parseFloat(b.revenue_per) - parseFloat(a.revenue_per));
-                
-                // 將資料存入全域陣列供跨區比對 (記錄來源檔名)
-                const streamerName = file.name.replace('.csv', '');
-                data.forEach(row => {
-                    allDonors.push({
-                        pfid: row.pfid,
-                        nickname: row.nickname,
-                        revenue: parseFloat(row.revenue),
-                        revenue_per: parseFloat(row.revenue_per),
-                        streamer: streamerName
-                    });
+            Array.from(files).forEach(file => {
+                Papa.parse(file, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        let data = [];
+                        // 1. 處理檔名截斷：只保留 "_對主播貢獻統計排名" 之前的部分
+                        let streamerName = file.name.split('_對主播貢獻統計排名')[0].replace('.csv', '');
+
+                        results.data.forEach(row => {
+                            // 2. 確實抓取 revenue 與 revenue_per，並防呆處理千分位逗號與百分號
+                            if(row.pfid && row.revenue) {
+                                let rawRev = String(row.revenue).replace(/,/g, '').trim();
+                                let rawPer = String(row.revenue_per).replace(/,/g, '').replace(/%/g, '').trim();
+                                
+                                let rev = parseFloat(rawRev) || 0;
+                                let per = parseFloat(rawPer) || 0;
+
+                                data.push({
+                                    pfid: row.pfid,
+                                    nickname: row.nickname || row.username || 'Unknown',
+                                    revenue: rev,
+                                    revenue_per: per,
+                                    streamer: streamerName
+                                });
+                            }
+                        });
+                        
+                        // 依照 revenue_per 排序 (由大到小)
+                        data.sort((a, b) => b.revenue_per - a.revenue_per);
+                        
+                        // 4. 策略邏輯防呆：自動判斷 revenue_per 是 0~1 的小數，還是 0~100 的百分數
+                        let isPercentScale = data.some(d => d.revenue_per > 1);
+
+                        // 將資料存入全域陣列供跨區比對
+                        data.forEach(row => {
+                            allDonors.push({
+                                ...row,
+                                isPercentScale: isPercentScale
+                            });
+                        });
+
+                        fileResults.push({ name: streamerName, data: data, isPercentScale: isPercentScale });
+                        parsedFiles++;
+
+                        // 當所有檔案解析完成時，開始繪圖與分析
+                        if (parsedFiles === files.length) {
+                            renderRevenueDashboards(fileResults, container);
+                            renderCrossDonors(allDonors, crossDonorSection, crossDonorContent);
+                        }
+                    }
                 });
+            });
+        }
 
-                fileResults.push({ name: streamerName, data: data });
-                parsedFiles++;
+        function renderRevenueDashboards(fileResults, container) {
+            container.innerHTML = ''; // 清空提示
+            
+            fileResults.forEach((fileInfo, index) => {
+                const data = fileInfo.data;
+                if(data.length === 0) return;
 
-                // 當所有檔案解析完成時，開始繪圖與分析
-                if (parsedFiles === files.length) {
-                    renderRevenueDashboards(fileResults, container);
-                    renderCrossDonors(allDonors, crossDonorSection, crossDonorContent);
+                // 計算 Top 3 總和
+                let top3Sum = 0;
+                for(let i=0; i<Math.min(3, data.length); i++) {
+                    top3Sum += data[i].revenue_per;
                 }
-            }
-        });
-    });
-}
 
-function renderRevenueDashboards(fileResults, container) {
-    container.innerHTML = ''; // 清空提示
-    
-    fileResults.forEach((fileInfo, index) => {
-        const data = fileInfo.data;
-        if(data.length === 0) return;
+                // 4. 修正策略程式碼邏輯：根據 Scale 決定閾值
+                let threshold = fileInfo.isPercentScale ? 50 : 0.5;
+                let displaySumPercent = fileInfo.isPercentScale ? top3Sum : (top3Sum * 100);
 
-        // 計算 Top 3 總和 (大戶判定指標)
-        let top3Sum = 0;
-        for(let i=0; i<Math.min(3, data.length); i++) {
-            top3Sum += data[i].revenue_per;
-        }
+                // 判定策略
+                let analysisType = "";
+                let analysisColor = "";
+                let analysisReason = "";
 
-        // 判定策略
-        let analysisType = "";
-        let analysisColor = "";
-        let analysisReason = "";
+                if (top3Sum >= threshold) {
+                    analysisType = "🐋 大戶依賴型 (Whale-Driven)";
+                    analysisColor = "#d32f2f"; // 紅色警戒
+                    analysisReason = `前 3 名大戶貢獻了高達 ${displaySumPercent.toFixed(1)}% 的收益。這代表變現效率極高，但營收抗風險能力弱。一旦榜一大哥流失，收益將面臨腰斬風險。建議：在安撫大戶的同時，需重點拓展中小型付費用戶。`;
+                } else {
+                    analysisType = "👥 群眾支持型 (Crowd-Driven)";
+                    analysisColor = "#2e7d32"; // 綠色健康
+                    analysisReason = `前 3 名大戶貢獻僅 ${displaySumPercent.toFixed(1)}%，收益分佈呈現長尾效應。這代表粉絲基本盤非常穩固，抗風險能力強。建議：維持現有高流量與互動，可策劃「群眾參與型」的打賞活動拉高整體客單價。`;
+                }
 
-        if (top3Sum >= 0.5) {
-            analysisType = "🐋 大戶依賴型 (Whale-Driven)";
-            analysisColor = "#d32f2f"; // 紅色警戒
-            analysisReason = `前 3 名大戶貢獻了高達 ${(top3Sum*100).toFixed(1)}% 的收益。這代表變現效率極高，但營收抗風險能力弱。一旦榜一大哥流失，收益將面臨腰斬風險。建議：在安撫大戶的同時，需重點拓展中小型付費用戶。`;
-        } else {
-            analysisType = "👥 群眾支持型 (Crowd-Driven)";
-            analysisColor = "#2e7d32"; // 綠色健康
-            analysisReason = `前 3 名大戶貢獻僅 ${(top3Sum*100).toFixed(1)}%，收益分佈呈現長尾效應。這代表粉絲基本盤非常穩固，抗風險能力強。建議：維持現有高流量與互動，可策劃「群眾參與型」的打賞活動拉高整體客單價。`;
-        }
+                // 建立卡片 UI
+                const cardId = `pieChart_${index}`;
+                const cardHTML = `
+                    <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; width: 45%; min-width: 350px; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
+                        <h4 style="margin-top: 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px;">📊 ${fileInfo.name}</h4>
+                        <div style="height: 250px; position: relative;">
+                            <canvas id="${cardId}"></canvas>
+                        </div>
+                        <div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-left: 4px solid ${analysisColor}; border-radius: 4px;">
+                            <div style="font-weight: bold; color: ${analysisColor}; margin-bottom: 5px;">${analysisType}</div>
+                            <div style="font-size: 13px; color: #555; line-height: 1.5;">${analysisReason}</div>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', cardHTML);
 
-        // 建立卡片 UI
-        const cardId = `pieChart_${index}`;
-        const cardHTML = `
-            <div style="background: white; border: 1px solid #ddd; border-radius: 8px; padding: 20px; width: 45%; min-width: 350px; box-shadow: 0 4px 8px rgba(0,0,0,0.05);">
-                <h4 style="margin-top: 0; color: #333; border-bottom: 1px solid #eee; padding-bottom: 10px;">📊 ${fileInfo.name}</h4>
-                <div style="height: 250px; position: relative;">
-                    <canvas id="${cardId}"></canvas>
-                </div>
-                <div style="margin-top: 15px; padding: 10px; background: #f9f9f9; border-left: 4px solid ${analysisColor}; border-radius: 4px;">
-                    <div style="font-weight: bold; color: ${analysisColor}; margin-bottom: 5px;">${analysisType}</div>
-                    <div style="font-size: 13px; color: #555; line-height: 1.5;">${analysisReason}</div>
-                </div>
-            </div>
-        `;
-        container.insertAdjacentHTML('beforeend', cardHTML);
+                // 繪製圓餅圖
+                const ctx = document.getElementById(cardId).getContext('2d');
+                const labels = data.map(d => d.nickname);
+                const plotData = data.map(d => d.revenue_per);
+                
+                const bgColors = data.map((d, i) => `hsl(210, 80%, ${Math.max(30, 80 - i*5)}%)`);
 
-        // 繪製圓餅圖
-        const ctx = document.getElementById(cardId).getContext('2d');
-        const labels = data.map(d => d.nickname);
-        const plotData = data.map(d => d.revenue_per);
-        
-        // 產生漸層或隨機顏色 (強調前幾名)
-        const bgColors = data.map((d, i) => `hsl(210, 80%, ${Math.max(30, 80 - i*5)}%)`);
-
-        const chart = new Chart(ctx, {
-            type: 'pie',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: plotData,
-                    backgroundColor: bgColors,
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false }, // 隱藏圖例避免太雜
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                const row = data[context.dataIndex];
-                                // 滑鼠 hover 指定格式：pfid | nickname | revenue
-                                return `${row.pfid} | ${row.nickname} | 鑽石: ${row.revenue.toLocaleString()}`;
+                const chart = new Chart(ctx, {
+                    type: 'pie',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: plotData,
+                            backgroundColor: bgColors,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }, 
+                            tooltip: {
+                                callbacks: {
+                                    // 3. Hover 時顯示精確格式：pfid | username | revenue_per | revenue
+                                    label: function(context) {
+                                        const row = data[context.dataIndex];
+                                        let displayPer = fileInfo.isPercentScale ? row.revenue_per.toFixed(2) : (row.revenue_per * 100).toFixed(2);
+                                        return `PFID: ${row.pfid} | ${row.nickname} | 佔比: ${displayPer}% | 收益: ${row.revenue.toLocaleString()} 鑽`;
+                                    }
+                                }
                             }
                         }
                     }
-                }
+                });
+                revenueChartInstances.push(chart);
+            });
+        }
+
+        function renderCrossDonors(allDonors, section, contentContainer) {
+            // 依據 pfid 將用戶分組 (避免同名異人)
+            let donorMap = {};
+            allDonors.forEach(d => {
+                let key = d.pfid; 
+                if(!key) return;
+                if(!donorMap[key]) donorMap[key] = { nickname: d.nickname, pfid: d.pfid, totalRevenue: 0, records: [] };
+                donorMap[key].records.push(d);
+                donorMap[key].totalRevenue += d.revenue;
+            });
+
+            // 篩選出出現在「不同 CSV (不同主播)」的乾爹
+            let crossDonors = Object.values(donorMap).filter(d => {
+                let uniqueStreamers = new Set(d.records.map(r => r.streamer));
+                return uniqueStreamers.size > 1;
+            });
+
+            if(crossDonors.length === 0) {
+                section.style.display = 'none';
+                return;
             }
-        });
-        revenueChartInstances.push(chart);
-    });
-}
 
-function renderCrossDonors(allDonors, section, contentContainer) {
-    // 依據 pfid 或 nickname 將用戶分組
-    let donorMap = {};
-    allDonors.forEach(d => {
-        let key = d.pfid || d.nickname; 
-        if(!donorMap[key]) donorMap[key] = { nickname: d.nickname, pfid: d.pfid, totalRevenue: 0, records: [] };
-        donorMap[key].records.push(d);
-        donorMap[key].totalRevenue += d.revenue;
-    });
+            section.style.display = 'block';
+            // 依照總捐款金額大到小排序
+            crossDonors.sort((a,b) => b.totalRevenue - a.totalRevenue);
 
-    // 篩選出出現在「不同 CSV (不同主播)」的乾爹
-    let crossDonors = Object.values(donorMap).filter(d => {
-        let uniqueStreamers = new Set(d.records.map(r => r.streamer));
-        return uniqueStreamers.size > 1;
-    });
+            let html = `<table style="width:100%; border-collapse: collapse; font-size: 14px; text-align: left;">
+                <tr style="background: #f1f1f1; border-bottom: 2px solid #ccc;">
+                    <th style="padding: 10px;">大戶暱稱 (PFID)</th>
+                    <th style="padding: 10px;">總打賞金額</th>
+                    <th style="padding: 10px;">打賞對象分佈 (主播 | 佔比 | 金額)</th>
+                </tr>`;
 
-    if(crossDonors.length === 0) {
-        section.style.display = 'none';
-        return;
-    }
+            crossDonors.forEach(d => {
+                let recordsHtml = d.records.map(r => {
+                    let displayPer = r.isPercentScale ? r.revenue_per.toFixed(1) : (r.revenue_per * 100).toFixed(1);
+                    return `<span style="display:inline-block; background:#e3f2fd; color:#0d47a1; padding:3px 8px; border-radius:4px; margin:2px;">
+                        ${r.streamer} | ${displayPer}% | ${r.revenue.toLocaleString()}
+                    </span>`;
+                }).join("");
 
-    section.style.display = 'block';
-    // 依照總捐款金額大到小排序
-    crossDonors.sort((a,b) => b.totalRevenue - a.totalRevenue);
-
-    let html = `<table style="width:100%; border-collapse: collapse; font-size: 14px; text-align: left;">
-        <tr style="background: #f1f1f1; border-bottom: 2px solid #ccc;">
-            <th style="padding: 10px;">大戶暱稱 (PFID)</th>
-            <th style="padding: 10px;">總打賞金額</th>
-            <th style="padding: 10px;">打賞對象分佈 (主播 | 佔比 | 金額)</th>
-        </tr>`;
-
-    crossDonors.forEach(d => {
-        let recordsHtml = d.records.map(r => 
-            `<span style="display:inline-block; background:#e3f2fd; color:#0d47a1; padding:3px 8px; border-radius:4px; margin:2px;">
-                ${r.streamer} | ${(r.revenue_per * 100).toFixed(1)}% | ${r.revenue.toLocaleString()}
-            </span>`
-        ).join("");
-
-        html += `
-        <tr style="border-bottom: 1px solid #eee;">
-            <td style="padding: 10px; font-weight: bold;">${d.nickname} <br><span style="font-size:12px; color:#888;">${d.pfid}</span></td>
-            <td style="padding: 10px; color:#d32f2f; font-weight:bold;">${d.totalRevenue.toLocaleString()}</td>
-            <td style="padding: 10px;">${recordsHtml}</td>
-        </tr>`;
-    });
-    
-    html += `</table>`;
-    contentContainer.innerHTML = html;
-}
+                html += `
+                <tr style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 10px; font-weight: bold;">${d.nickname} <br><span style="font-size:12px; color:#888;">${d.pfid}</span></td>
+                    <td style="padding: 10px; color:#d32f2f; font-weight:bold;">${d.totalRevenue.toLocaleString()}</td>
+                    <td style="padding: 10px;">${recordsHtml}</td>
+                </tr>`;
+            });
+            
+            html += `</table>`;
+            contentContainer.innerHTML = html;
+        }
     </script>
 </body>
 </html>
